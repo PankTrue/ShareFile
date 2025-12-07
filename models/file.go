@@ -8,6 +8,6 @@ type File struct {
 	FileName    string    `json:"file_name"`
 	FileSize    int64     `json:"file_size"`
 	ContentType string    `json:"content_type"`
-	Data        []byte    `json:"-"` // не включаем в JSON для экономии места
+	Data        []byte    `json:"-"`
 	UploadedAt  time.Time `json:"uploaded_at"`
 }
