@@ -23,6 +23,9 @@ func SetupRoutes() *gin.Engine {
 	// Эндпоинт для скачивания файла
 	router.GET("/file/:id/download", fileHandler.DownloadFile)
 
+	// Эндпоинт для получения списка файлов
+	router.GET("/files", fileHandler.ListFiles)
+
 	// Эндпоинт для проверки работоспособности
 	router.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{

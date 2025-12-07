@@ -147,3 +147,46 @@ func (h *FileHandler) DownloadFile(c *gin.Context) {
 
 	c.Data(200, file.ContentType, file.Data)
 }
+
+// ListFiles возвращает список всех файлов
+func (h *FileHandler) ListFiles(c *gin.Context) {
+	query := `
+		SELECT id, file_name, file_size, content_type, uploaded_at
+		FROM files
+		ORDER BY uploaded_at DESC
+	`
+
+	rows, err := h.DB.Query(query)
+	if err != nil {
+		c.JSON(500, gin.H{"error": fmt.Sprintf("Ошибка получения списка файлов: %v", err)})
+		return
+	}
+	defer rows.Close()
+
+	var files []models.File
+	for rows.Next() {
+		var file models.File
+		err := rows.Scan(
+			&file.ID,
+			&file.FileName,
+			&file.FileSize,
+			&file.ContentType,
+			&file.UploadedAt,
+		)
+		if err != nil {
+			c.JSON(500, gin.H{"error": fmt.Sprintf("Ошибка сканирования файла: %v", err)})
+			return
+		}
+		files = append(files, file)
+	}
+
+	if err = rows.Err(); err != nil {
+		c.JSON(500, gin.H{"error": fmt.Sprintf("Ошибка при итерации по файлам: %v", err)})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"files": files,
+		"count": len(files),
+	})
+}
