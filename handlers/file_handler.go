@@ -1,24 +1,23 @@
 package handlers
 
 import (
-	"context"
-	"database/sql"
 	"fmt"
 	"io"
-	"time"
+	"strconv"
 
 	"ShareFile/models"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // FileHandler содержит зависимости для обработчиков файлов
 type FileHandler struct {
-	DB *sql.DB
+	DB *gorm.DB
 }
 
 // NewFileHandler создает новый экземпляр FileHandler
-func NewFileHandler(db *sql.DB) *FileHandler {
+func NewFileHandler(db *gorm.DB) *FileHandler {
 	return &FileHandler{DB: db}
 }
 
@@ -53,57 +52,44 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 	}
 
 	// Сохраняем в базу данных
-	ctx := context.Background()
-	query := `
-		INSERT INTO files (file_name, file_size, content_type, data)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, uploaded_at
-	`
+	fileModel := models.File{
+		FileName:    file.Filename,
+		FileSize:    file.Size,
+		ContentType: contentType,
+		Data:        data,
+	}
 
-	var fileID int64
-	var uploadedAt time.Time
-	err = h.DB.QueryRowContext(ctx, query, file.Filename, file.Size, contentType, data).
-		Scan(&fileID, &uploadedAt)
-
-	if err != nil {
+	if err := h.DB.Create(&fileModel).Error; err != nil {
 		c.JSON(500, gin.H{"error": fmt.Sprintf("Ошибка сохранения в БД: %v", err)})
 		return
 	}
 
 	c.JSON(200, gin.H{
 		"message":      "Файл успешно загружен",
-		"id":           fileID,
-		"file_name":    file.Filename,
-		"file_size":    file.Size,
-		"content_type": contentType,
-		"uploaded_at":  uploadedAt,
+		"id":           fileModel.ID,
+		"file_name":    fileModel.FileName,
+		"file_size":    fileModel.FileSize,
+		"content_type": fileModel.ContentType,
+		"uploaded_at":  fileModel.UploadedAt,
 	})
 }
 
 // GetFileInfo возвращает информацию о файле без самого содержимого
 func (h *FileHandler) GetFileInfo(c *gin.Context) {
 	id := c.Param("id")
-
-	var file models.File
-	query := `
-		SELECT id, file_name, file_size, content_type, uploaded_at
-		FROM files
-		WHERE id = $1
-	`
-
-	err := h.DB.QueryRow(query, id).Scan(
-		&file.ID,
-		&file.FileName,
-		&file.FileSize,
-		&file.ContentType,
-		&file.UploadedAt,
-	)
-
-	if err == sql.ErrNoRows {
-		c.JSON(404, gin.H{"error": "Файл не найден"})
+	fileID, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Неверный формат ID"})
 		return
 	}
-	if err != nil {
+
+	var file models.File
+	if err := h.DB.Select("id", "file_name", "file_size", "content_type", "uploaded_at").
+		First(&file, fileID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(404, gin.H{"error": "Файл не найден"})
+			return
+		}
 		c.JSON(500, gin.H{"error": fmt.Sprintf("Ошибка получения файла: %v", err)})
 		return
 	}
@@ -114,28 +100,18 @@ func (h *FileHandler) GetFileInfo(c *gin.Context) {
 // DownloadFile возвращает сам файл для скачивания
 func (h *FileHandler) DownloadFile(c *gin.Context) {
 	id := c.Param("id")
-
-	var file models.File
-	query := `
-		SELECT id, file_name, file_size, content_type, data, uploaded_at
-		FROM files
-		WHERE id = $1
-	`
-
-	err := h.DB.QueryRow(query, id).Scan(
-		&file.ID,
-		&file.FileName,
-		&file.FileSize,
-		&file.ContentType,
-		&file.Data,
-		&file.UploadedAt,
-	)
-
-	if err == sql.ErrNoRows {
-		c.JSON(404, gin.H{"error": "Файл не найден"})
+	fileID, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Неверный формат ID"})
 		return
 	}
-	if err != nil {
+
+	var file models.File
+	if err := h.DB.First(&file, fileID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(404, gin.H{"error": "Файл не найден"})
+			return
+		}
 		c.JSON(500, gin.H{"error": fmt.Sprintf("Ошибка получения файла: %v", err)})
 		return
 	}
@@ -150,38 +126,11 @@ func (h *FileHandler) DownloadFile(c *gin.Context) {
 
 // ListFiles возвращает список всех файлов
 func (h *FileHandler) ListFiles(c *gin.Context) {
-	query := `
-		SELECT id, file_name, file_size, content_type, uploaded_at
-		FROM files
-		ORDER BY uploaded_at DESC
-	`
-
-	rows, err := h.DB.Query(query)
-	if err != nil {
-		c.JSON(500, gin.H{"error": fmt.Sprintf("Ошибка получения списка файлов: %v", err)})
-		return
-	}
-	defer rows.Close()
-
 	var files []models.File
-	for rows.Next() {
-		var file models.File
-		err := rows.Scan(
-			&file.ID,
-			&file.FileName,
-			&file.FileSize,
-			&file.ContentType,
-			&file.UploadedAt,
-		)
-		if err != nil {
-			c.JSON(500, gin.H{"error": fmt.Sprintf("Ошибка сканирования файла: %v", err)})
-			return
-		}
-		files = append(files, file)
-	}
-
-	if err = rows.Err(); err != nil {
-		c.JSON(500, gin.H{"error": fmt.Sprintf("Ошибка при итерации по файлам: %v", err)})
+	if err := h.DB.Select("id", "file_name", "file_size", "content_type", "uploaded_at").
+		Order("uploaded_at DESC").
+		Find(&files).Error; err != nil {
+		c.JSON(500, gin.H{"error": fmt.Sprintf("Ошибка получения списка файлов: %v", err)})
 		return
 	}
 

@@ -1,14 +1,16 @@
 package database
 
 import (
-	"database/sql"
 	"log"
 	"os"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"ShareFile/models"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-var DB *sql.DB
+var DB *gorm.DB
 
 // InitDB инициализирует подключение к базе данных
 func InitDB() error {
@@ -19,13 +21,8 @@ func InitDB() error {
 		dbURL = "postgres://postgres:postgres@localhost:5432/filedb?sslmode=disable"
 	}
 
-	DB, err = sql.Open("pgx", dbURL)
+	DB, err = gorm.Open(postgres.Open(dbURL), &gorm.Config{})
 	if err != nil {
-		return err
-	}
-
-	// Проверка подключения
-	if err = DB.Ping(); err != nil {
 		return err
 	}
 
@@ -41,23 +38,16 @@ func InitDB() error {
 // CloseDB закрывает подключение к базе данных
 func CloseDB() error {
 	if DB != nil {
-		return DB.Close()
+		sqlDB, err := DB.DB()
+		if err != nil {
+			return err
+		}
+		return sqlDB.Close()
 	}
 	return nil
 }
 
 // initTable создает таблицу для хранения файлов, если она не существует
 func initTable() error {
-	query := `
-	CREATE TABLE IF NOT EXISTS files (
-		id SERIAL PRIMARY KEY,
-		file_name VARCHAR(255) NOT NULL,
-		file_size BIGINT NOT NULL,
-		content_type VARCHAR(100),
-		data BYTEA NOT NULL,
-		uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-	);
-	`
-	_, err := DB.Exec(query)
-	return err
+	return DB.AutoMigrate(&models.File{})
 }
