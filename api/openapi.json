@@ -1,0 +1,2956 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ShareFile API",
+    "version": "1.0.0",
+    "description": "Backend phase. JSON IDs are opaque; timestamps are Unix seconds and lengths/offsets are signed 64-bit byte counts (clients must avoid JavaScript number precision loss for values above 2^53). All /api/v1/admin/* routes exist only on the private LAN/VPN HTTPS listener; on the public listener they are 404 even for an administrator. The other routes are served on both listeners. Browser mutations require X-CSRF-Token and a matching Origin if supplied. Same-origin deployment; no CORS. Default errors are JSON {error:string}: 400 invalid/interrupted, 401 unauthenticated, 403 forbidden, 404 missing, 409 conflict, 429 retry later, 507 insufficient storage, 503 unavailable storage, 500 internal. Request JSON is limited to 64 KiB. Deployment examples use insecure cookies only on explicit loopback development listeners."
+  },
+  "servers": [
+    {
+      "url": "https://files.example.invalid",
+      "description": "Replace with public_url"
+    },
+    {
+      "url": "https://admin.example.invalid:8081",
+      "description": "Replace with private admin_url; LAN/VPN only"
+    }
+  ],
+  "security": [
+    {
+      "Session": []
+    },
+    {
+      "DeviceToken": []
+    }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "summary": "alive",
+        "operationId": "get_healthz",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "api_version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "readyz returns 503 when the configured storage root/volume marker or database is unavailable. healthz reports only process liveness.",
+        "security": []
+      }
+    },
+    "/readyz": {
+      "get": {
+        "summary": "ready",
+        "operationId": "get_readyz",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "api_version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "readyz returns 503 when the configured storage root/volume marker or database is unavailable. healthz reports only process liveness.",
+        "security": []
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "summary": "Sign in",
+        "operationId": "post_api_v1_auth_login",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Identity"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Sets an HttpOnly, Secure, SameSite=Lax, host-only cookie with a 24-hour session. Private listener login requires an administrator. Requests with a foreign Origin or Sec-Fetch-Site=cross-site are rejected; rate limiting returns 429.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string",
+                    "writeOnly": true
+                  }
+                },
+                "required": [
+                  "username",
+                  "password"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "summary": "Log out",
+        "operationId": "post_api_v1_auth_logout",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "security": [
+          {
+            "Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "summary": "Current identity",
+        "operationId": "get_api_v1_me",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Identity"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "For a bearer device, csrf_token is empty."
+      }
+    },
+    "/api/v1/device-requests": {
+      "post": {
+        "summary": "Begin device pairing",
+        "operationId": "post_api_v1_device_requests",
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "request": {
+                      "$ref": "#/components/schemas/DeviceRequest"
+                    },
+                    "verification_url": {
+                      "type": "string"
+                    },
+                    "interval": {
+                      "type": "integer",
+                      "format": "int64"
+                    }
+                  },
+                  "required": [
+                    "request",
+                    "verification_url",
+                    "interval"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Keep request.secret private. Request expires after 10 minutes. verification_url needs the separately released Web UI. Poll no more than once every 12 seconds.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/device-requests/{id}": {
+      "get": {
+        "summary": "Inspect device request",
+        "operationId": "get_api_v1_device_requests_id",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceRequest"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "secret is returned empty on this browser endpoint; the initial secret is never returned again.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ],
+        "security": [
+          {
+            "Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/device-requests/{id}/approve": {
+      "post": {
+        "summary": "Approve device",
+        "operationId": "post_api_v1_device_requests_id_approve",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "One-time approval by a logged-in browser. Device bearer credentials cannot approve other devices.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "security": [
+          {
+            "Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/device-requests/{id}/token": {
+      "post": {
+        "summary": "Poll pairing result",
+        "operationId": "post_api_v1_device_requests_id_token",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    },
+                    "token_type": {
+                      "const": "Bearer"
+                    },
+                    "expires_in": {
+                      "type": "integer",
+                      "format": "int64"
+                    }
+                  },
+                  "required": [
+                    "token",
+                    "token_type",
+                    "expires_in"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "202": {
+            "description": "Await browser approval",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "pending"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Returns 202 while pending, 200 once with a 180-day per-device token, 404 after consumption or expiry. Store the token in the OS credential store.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "secret": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "secret"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/devices": {
+      "get": {
+        "summary": "List own devices",
+        "operationId": "get_api_v1_devices",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Device"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ]
+      }
+    },
+    "/api/v1/devices/{id}": {
+      "delete": {
+        "summary": "Revoke own device",
+        "operationId": "delete_api_v1_devices_id",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ]
+      }
+    },
+    "/api/v1/folders": {
+      "get": {
+        "summary": "List roots or folder children",
+        "operationId": "get_api_v1_folders",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Node"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Without parent_id: personal root and explicitly granted shared folders; administrators also see all live roots. With parent_id: live direct children. Stable order by name and id.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "parent_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create folder",
+        "operationId": "post_api_v1_folders",
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Node"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Editor on parent required. An empty parent_id creates a shared root, administrator only. Duplicate visible names receive a numeric suffix.",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FolderInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}": {
+      "get": {
+        "summary": "Read metadata",
+        "operationId": "get_api_v1_nodes_id",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Node"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Requires reader; incomplete uploads have no visible node.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "summary": "Move or rename",
+        "operationId": "patch_api_v1_nodes_id",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Editor on both source and destination required. Send current parent_id to rename. Root moves, cycles and conflicting names return 409. Access and public links are recalculated atomically.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveInput"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Move to trash",
+        "operationId": "delete_api_v1_nodes_id",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Editor required. Personal home roots cannot be deleted. Subtree disappears immediately; associated public links are permanently revoked. Trash retention is seven days.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ]
+      }
+    },
+    "/api/v1/nodes/{id}/content": {
+      "get": {
+        "summary": "Download file",
+        "operationId": "get_api_v1_nodes_id_content",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "206": {
+            "description": "Requested range",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "ETag/Last-Modified condition satisfied; no body"
+          },
+          "416": {
+            "description": "Requested range not satisfiable"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Reader required. Streams the completed file with attachment disposition and immutable-ID ETag. Supports HTTP Range, HEAD and conditional requests; 429 when transfer slots are occupied.",
+        "parameters": [
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/nodes/{id}/grants": {
+      "get": {
+        "summary": "List direct grants",
+        "operationId": "get_api_v1_nodes_id_grants",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Grant"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Manager required. Only direct grants are returned; the effective role also includes grants inherited from all ancestors.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ]
+      },
+      "put": {
+        "summary": "Set or remove folder grant",
+        "operationId": "put_api_v1_nodes_id_grants",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Manager required; folder grants only. Roles are additive and inherited. Removing share authority permanently revokes links, even if rights are later restored.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Grant"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/trash": {
+      "get": {
+        "summary": "List accessible trash roots",
+        "operationId": "get_api_v1_trash",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Node"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Own objects, objects under managed live parents, or all objects for an administrator. Pagination applies after access filtering.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/trash/{id}/restore": {
+      "post": {
+        "summary": "Restore trash root",
+        "operationId": "post_api_v1_trash_id_restore",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Node"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Owner, administrator or manager of the live former parent required; editor on the destination also required. Empty parent_id uses the former parent. Name collisions receive a suffix; revoked links remain revoked. Pending durable purge returns 409.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "parent_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/trash/{id}": {
+      "delete": {
+        "summary": "Permanently purge trash root",
+        "operationId": "delete_api_v1_trash_id",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Same trash authority as restore. Purging a folder also removes earlier trash roots below it. A durable journal completes interrupted purges after restart.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ]
+      }
+    },
+    "/api/v1/uploads": {
+      "options": {
+        "summary": "Discover Tus capabilities",
+        "operationId": "options_api_v1_uploads",
+        "responses": {
+          "204": {
+            "description": "Success",
+            "headers": {
+              "Tus-Resumable": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Tus-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Tus-Extension": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sharefile-Chunk-Size": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Authenticated endpoint. Extensions: creation, expiration, termination. There is no Tus-Max-Size per-file cap. Sharefile-Chunk-Size bounds each PATCH request, default 16 MiB. Tus-Resumable is not required for OPTIONS."
+      },
+      "post": {
+        "summary": "Create resumable upload",
+        "operationId": "post_api_v1_uploads",
+        "responses": {
+          "201": {
+            "description": "Success",
+            "headers": {
+              "Tus-Resumable": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Tus-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Tus-Extension": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sharefile-Chunk-Size": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              },
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Upload-Expires": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sharefile-File-ID": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{43}$"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "412": {
+            "description": "Unsupported or missing Tus version, Tus-Version: 1.0.0, no body"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Empty request body; known nonnegative file length. Editor on destination required. Zero-length files publish immediately. Idempotency-Key deduplicates identical creation parameters while the upload record exists (default seven days). With replace_id, the existing matching file is trashed only after the new file is durably uploaded; old direct links are revoked.",
+        "parameters": [
+          {
+            "name": "Tus-Resumable",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "const": "1.0.0"
+            }
+          },
+          {
+            "name": "X-HTTP-Method-Override",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "enum": [
+                "POST",
+                "HEAD",
+                "PATCH",
+                "DELETE",
+                "OPTIONS"
+              ]
+            },
+            "description": "Only interpreted for Tus upload endpoints; applied before authentication/CSRF checks."
+          },
+          {
+            "name": "Upload-Length",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "Upload-Metadata",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated filename BASE64,folder_id BASE64 and optional replace_id BASE64. UTF-8 values, standard padded Base64. Other keys are rejected."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ]
+      }
+    },
+    "/api/v1/uploads/{id}": {
+      "options": {
+        "summary": "Discover Tus capabilities",
+        "operationId": "options_api_v1_uploads_id",
+        "responses": {
+          "204": {
+            "description": "Success",
+            "headers": {
+              "Tus-Resumable": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Tus-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Tus-Extension": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sharefile-Chunk-Size": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Authenticated endpoint. Extensions: creation, expiration, termination. There is no Tus-Max-Size per-file cap. Sharefile-Chunk-Size bounds each PATCH request, default 16 MiB. Tus-Resumable is not required for OPTIONS.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ]
+      },
+      "head": {
+        "summary": "Read resumable upload offset",
+        "operationId": "head_api_v1_uploads_id",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "Tus-Resumable": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Tus-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Tus-Extension": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sharefile-Chunk-Size": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              },
+              "Upload-Offset": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              },
+              "Upload-Length": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              },
+              "Upload-Expires": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Upload-Metadata": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sharefile-File-ID": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{43}$"
+                }
+              },
+              "Sharefile-Upload-State": {
+                "schema": {
+                  "enum": [
+                    "open",
+                    "committing",
+                    "complete"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "412": {
+            "description": "Unsupported or missing Tus version, Tus-Version: 1.0.0, no body"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Only the creator with current editor rights on the destination can resume. Expired or foreign sessions return 404. HEAD never transfers file data.",
+        "parameters": [
+          {
+            "name": "Tus-Resumable",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "const": "1.0.0"
+            }
+          },
+          {
+            "name": "X-HTTP-Method-Override",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "enum": [
+                "POST",
+                "HEAD",
+                "PATCH",
+                "DELETE",
+                "OPTIONS"
+              ]
+            },
+            "description": "Only interpreted for Tus upload endpoints; applied before authentication/CSRF checks."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "summary": "Append next upload chunk",
+        "operationId": "patch_api_v1_uploads_id",
+        "responses": {
+          "204": {
+            "description": "Success",
+            "headers": {
+              "Tus-Resumable": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Tus-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Tus-Extension": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sharefile-Chunk-Size": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              },
+              "Upload-Offset": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              },
+              "Upload-Expires": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sharefile-File-ID": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{43}$"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "412": {
+            "description": "Unsupported or missing Tus version, Tus-Version: 1.0.0, no body"
+          },
+          "415": {
+            "description": "Expected application/offset+octet-stream, no body"
+          },
+          "413": {
+            "description": "Known chunk length exceeds Sharefile-Chunk-Size",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Content-Type application/offset+octet-stream. Chunk is streamed to HDD then fsynced before its offset is committed. A conflicting offset returns 409 without changes. Oversized chunks return 413 (chunk size, not file size). After an interruption HEAD gives the durable offset; do not blindly retry from the previous offset. On full length, the file is atomically published.",
+        "parameters": [
+          {
+            "name": "Tus-Resumable",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "const": "1.0.0"
+            }
+          },
+          {
+            "name": "X-HTTP-Method-Override",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "enum": [
+                "POST",
+                "HEAD",
+                "PATCH",
+                "DELETE",
+                "OPTIONS"
+              ]
+            },
+            "description": "Only interpreted for Tus upload endpoints; applied before authentication/CSRF checks."
+          },
+          {
+            "name": "Upload-Offset",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/offset+octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Terminate upload resource",
+        "operationId": "delete_api_v1_uploads_id",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "412": {
+            "description": "Unsupported or missing Tus version, Tus-Version: 1.0.0, no body"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Creator only. Removes unfinished bytes and session. For a completed upload removes only the Tus resource; use DELETE /nodes/{id} to trash the published file.",
+        "parameters": [
+          {
+            "name": "Tus-Resumable",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "const": "1.0.0"
+            }
+          },
+          {
+            "name": "X-HTTP-Method-Override",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "enum": [
+                "POST",
+                "HEAD",
+                "PATCH",
+                "DELETE",
+                "OPTIONS"
+              ]
+            },
+            "description": "Only interpreted for Tus upload endpoints; applied before authentication/CSRF checks."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ]
+      }
+    },
+    "/api/v1/shares": {
+      "get": {
+        "summary": "List own links or links on a managed node",
+        "operationId": "get_api_v1_shares",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Share"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Without node_id returns links created by the caller. With node_id requires manager on the node. Raw public tokens are never returned again.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "node_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create public link",
+        "operationId": "post_api_v1_shares",
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "share": {
+                      "$ref": "#/components/schemas/Share"
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "share",
+                    "url"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Manager required. Default expires in seven days; never_expires=true is mutually exclusive with expires_at. Password is optional, otherwise 12–256 bytes. Raw URL is returned once. Folder links show live contents recursively within the shared subtree.",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "node_id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{43}$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "writeOnly": true
+                  },
+                  "expires_at": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "never_expires": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "node_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shares/{id}": {
+      "delete": {
+        "summary": "Revoke link permanently",
+        "operationId": "delete_api_v1_shares_id",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Creator or manager can revoke. New requests (including Range) stop; an already active response may finish.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ]
+      }
+    },
+    "/s/{token}": {
+      "get": {
+        "summary": "Open public file or folder",
+        "operationId": "get_s_token",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "description": "Password form",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "ETag/Last-Modified condition satisfied; no body"
+          },
+          "416": {
+            "description": "Requested range not satisfiable"
+          }
+        },
+        "tags": [
+          "Public shares"
+        ],
+        "description": "No account required. A file returns application/octet-stream with Range support; a folder returns escaped HTML with pagination. Protected links initially return 401 with an HTML password form, then require the share-specific cookie. Descendants are confined to the shared folder; no access to siblings/ancestors. Revoked, expired, disabled-creator or insufficient-creator-permission links return 404.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": []
+      }
+    },
+    "/s/{token}/nodes/{id}": {
+      "get": {
+        "summary": "Open public file or folder",
+        "operationId": "get_s_token_nodes_id",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "description": "Password form",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "ETag/Last-Modified condition satisfied; no body"
+          },
+          "416": {
+            "description": "Requested range not satisfiable"
+          }
+        },
+        "tags": [
+          "Public shares"
+        ],
+        "description": "No account required. A file returns application/octet-stream with Range support; a folder returns escaped HTML with pagination. Protected links initially return 401 with an HTML password form, then require the share-specific cookie. Descendants are confined to the shared folder; no access to siblings/ancestors. Revoked, expired, disabled-creator or insufficient-creator-permission links return 404.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ],
+        "security": []
+      }
+    },
+    "/s/{token}/unlock": {
+      "post": {
+        "summary": "Unlock password-protected link",
+        "operationId": "post_s_token_unlock",
+        "responses": {
+          "303": {
+            "description": "Success",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Public shares"
+        ],
+        "description": "Checks the password and sets a Secure, HttpOnly, SameSite=Lax cookie scoped to this link, for at most 24 hours or remaining link lifetime. Foreign Origin rejected; rate limited. Wrong password returns 403.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "password": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "password"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users": {
+      "get": {
+        "summary": "List users",
+        "operationId": "get_api_v1_admin_users",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/User"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true
+      },
+      "post": {
+        "summary": "Create local account",
+        "operationId": "post_api_v1_admin_users",
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "description": "Creates a private personal root and Uploads folder. Username is normalized to lowercase. Password length is checked in UTF-8 bytes.",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "description": "12 to 256 UTF-8 bytes."
+                  },
+                  "admin": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "username",
+                  "password"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true
+      }
+    },
+    "/api/v1/admin/users/{id}": {
+      "patch": {
+        "summary": "Disable, enable or reset password",
+        "operationId": "patch_api_v1_admin_users_id",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "description": "Disabling or resetting revokes all browser sessions, devices and pending approvals. Disabled users retain files; their links are permanently revoked. The last active administrator cannot be disabled. Role promotion/demotion is not supported here.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "active": {
+                    "type": "boolean"
+                  },
+                  "password": {
+                    "type": "string",
+                    "writeOnly": true
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true
+      }
+    },
+    "/api/v1/admin/groups": {
+      "get": {
+        "summary": "List groups",
+        "operationId": "get_api_v1_admin_groups",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Group"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true
+      },
+      "post": {
+        "summary": "Create group",
+        "operationId": "post_api_v1_admin_groups",
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Group"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true
+      }
+    },
+    "/api/v1/admin/groups/{id}/members": {
+      "get": {
+        "summary": "List group member IDs",
+        "operationId": "get_api_v1_admin_groups_id_members",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{43}$"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ],
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true
+      }
+    },
+    "/api/v1/admin/groups/{id}/members/{user}": {
+      "put": {
+        "summary": "Add group member",
+        "operationId": "put_api_v1_admin_groups_id_members_user",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true
+      },
+      "delete": {
+        "summary": "Remove group member",
+        "operationId": "delete_api_v1_admin_groups_id_members_user",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "description": "Recalculates inherited rights and permanently revokes links whose creators lost manager role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true
+      }
+    },
+    "/api/v1/admin/settings": {
+      "get": {
+        "summary": "Read runtime and startup settings",
+        "operationId": "get_api_v1_admin_settings",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true
+      },
+      "patch": {
+        "summary": "Change pending-upload retention",
+        "operationId": "patch_api_v1_admin_settings",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "description": "Other settings (paths, listeners, origins, TLS, chunk size and concurrency) are validated startup configuration; edit JSON and restart the service.",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "upload_ttl_seconds": {
+                    "type": "integer",
+                    "minimum": 3600,
+                    "maximum": 31536000
+                  }
+                },
+                "required": [
+                  "upload_ttl_seconds"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true
+      }
+    },
+    "/api/v1/admin/import": {
+      "post": {
+        "summary": "Copy an existing local file into storage",
+        "operationId": "post_api_v1_admin_import",
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Node"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "description": "root is a zero-based index in configured import_dirs. path is relative to that source root, without traversal or absolute paths. Only regular files; symlinks at the selected file are rejected. Source remains intact. Occupies an upload slot. Directory imports are deferred.",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "root": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "folder_id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{43}$"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "root",
+                  "path",
+                  "folder_id",
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "username": {
+            "type": "string"
+          },
+          "admin": {
+            "type": "boolean"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "home_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "admin",
+          "active",
+          "home_id"
+        ],
+        "additionalProperties": false
+      },
+      "Node": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "parent_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "owner_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "folder",
+              "file"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "deleted_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "trash_root": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          }
+        },
+        "required": [
+          "id",
+          "owner_id",
+          "name",
+          "kind",
+          "size",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "Grant": {
+        "type": "object",
+        "properties": {
+          "principal_type": {
+            "enum": [
+              "user",
+              "group"
+            ]
+          },
+          "principal_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "role": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3,
+            "description": "0 removes the direct grant; 1 reader, 2 editor, 3 manager. Inherited grants remain effective."
+          }
+        },
+        "required": [
+          "principal_type",
+          "principal_id",
+          "role"
+        ],
+        "additionalProperties": false
+      },
+      "Group": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "Device": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "revoked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "expires_at",
+          "revoked"
+        ],
+        "additionalProperties": false
+      },
+      "DeviceRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "secret": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "expires_at"
+        ],
+        "additionalProperties": false
+      },
+      "Share": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "node_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "user_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "revoked": {
+            "type": "boolean"
+          },
+          "password_protected": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "node_id",
+          "user_id",
+          "created_at",
+          "revoked",
+          "password_protected"
+        ],
+        "additionalProperties": false
+      },
+      "Identity": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/User"
+          },
+          "csrf_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user",
+          "csrf_token"
+        ],
+        "additionalProperties": false
+      },
+      "Settings": {
+        "type": "object",
+        "properties": {
+          "upload_ttl_seconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "chunk_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "upload_slots": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "download_slots": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reserve_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "import_roots": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "upload_ttl_seconds",
+          "chunk_bytes",
+          "upload_slots",
+          "download_slots",
+          "reserve_bytes",
+          "import_roots"
+        ],
+        "additionalProperties": false
+      },
+      "FolderInput": {
+        "type": "object",
+        "properties": {
+          "parent_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "Valid UTF-8 name, up to 240 bytes, without slash, backslash, control characters, leading/trailing whitespace or dot/dotdot."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "MoveInput": {
+        "type": "object",
+        "properties": {
+          "parent_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "name": {
+            "type": "string",
+            "description": "Valid UTF-8 name, up to 240 bytes, without slash, backslash, control characters, leading/trailing whitespace or dot/dotdot."
+          }
+        },
+        "required": [
+          "parent_id",
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "Session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-sharefile",
+        "description": "Development-only cookie name: sharefile_dev. Set by login."
+      },
+      "DeviceToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Individual device token obtained by browser pairing. Cannot use administrative routes or approve devices."
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "JSON error; 429 includes Retry-After seconds. Public administrative routes return the HTTP mux default 404. Tus may send bodyless 412/415 responses with protocol headers.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}

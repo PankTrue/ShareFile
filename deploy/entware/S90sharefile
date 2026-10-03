@@ -1,0 +1,48 @@
+#!/bin/sh
+set -eu
+PATH=/opt/sbin:/opt/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+service=/opt/etc/sharefile-service
+
+start_service() {
+    for command in daemonize supervise svok svup svc svstat; do
+        command -v "$command" >/dev/null || { echo "Missing $command; install daemonize and daemontools-encore" >&2; return 1; }
+    done
+    test -x /opt/sbin/sharefile
+    test -x "$service/run"
+    test -f /opt/etc/sharefile.json
+    mkdir -p /opt/var/run
+    rm -f "$service/down"
+    if ! svok "$service"; then
+        daemonize -p /opt/var/run/sharefile-supervisor.pid -l /opt/var/run/sharefile-supervisor.lock /opt/bin/supervise "$service"
+        count=0
+        until svok "$service"; do
+            count=$((count + 1))
+            test "$count" -lt 6 || { echo "Supervisor did not start" >&2; return 1; }
+            sleep 1
+        done
+    fi
+    svc -u "$service"
+    svstat "$service"
+}
+
+stop_service() {
+    touch "$service/down"
+    if svok "$service"; then
+        svc -d "$service"
+        count=0
+        while svup "$service"; do
+            count=$((count + 1))
+            test "$count" -lt 40 || { echo "Server still stopping; maintenance is unsafe" >&2; return 1; }
+            sleep 1
+        done
+    fi
+}
+
+case "${1:-}" in
+    start) start_service ;;
+    stop) stop_service ;;
+    restart) stop_service; start_service ;;
+    check) svstat "$service" ;;
+    *) echo "Usage: $0 {start|stop|restart|check}" >&2; exit 1 ;;
+esac

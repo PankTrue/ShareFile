@@ -1,0 +1,14 @@
+{
+  "data_dir": "/tmp/sharefile-local",
+  "volume_id": "sharefile-local-development",
+  "public_addr": "127.0.0.1:8080",
+  "public_url": "http://127.0.0.1:8080",
+  "admin_addr": "127.0.0.1:8081",
+  "admin_url": "http://127.0.0.1:8081",
+  "insecure_local": true,
+  "reserve_bytes": 67108864,
+  "upload_slots": 2,
+  "download_slots": 4,
+  "chunk_bytes": 16777216,
+  "import_dirs": []
+}
