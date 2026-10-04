@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -86,6 +85,8 @@ func validateJob(j Job) error {
 }
 func tusHeaders() map[string]string { return map[string]string{"Tus-Resumable": "1.0.0"} }
 func (c *Client) create(ctx context.Context, j *Job) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	h := tusHeaders()
 	h["Upload-Length"] = strconv.FormatInt(j.Size, 10)
 	h["Upload-Metadata"] = "filename " + base64.StdEncoding.EncodeToString([]byte(j.Name)) + ",folder_id " + base64.StdEncoding.EncodeToString([]byte(j.Folder))
@@ -116,6 +117,8 @@ type checkpoint struct {
 }
 
 func (c *Client) head(ctx context.Context, path string) (checkpoint, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	r, err := c.request(ctx, "HEAD", path, nil, 0, tusHeaders())
 	if err != nil {
 		return checkpoint{}, err
@@ -211,6 +214,10 @@ func (c *Client) Upload(ctx context.Context, j *Job, progress func(Job)) error {
 			if cp.Offset != j.Size {
 				return errors.New("Сервер не подтвердил завершение файла")
 			}
+			current, err := f.Stat()
+			if err != nil || current.Size() != j.Size || current.ModTime().UnixNano() != j.Modified {
+				return errors.New("Исходный файл изменился во время передачи. Проверьте опубликованный файл в Web UI")
+			}
 			return nil
 		}
 		if cp.State == "committing" {
@@ -263,6 +270,8 @@ func (c *Client) Upload(ctx context.Context, j *Job, progress func(Job)) error {
 	}
 }
 func (c *Client) Cancel(ctx context.Context, j *Job) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	if err := validateJob(*j); err != nil {
 		return err
 	}

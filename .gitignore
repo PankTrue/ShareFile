@@ -42,3 +42,8 @@ web/dist/
 web/*.tsbuildinfo
 web/test-results/
 web/playwright-report/
+clients/macos/build/
+# Some global ignore lists treat any directory named core as a crash dump.
+!clients/core/
+!clients/core/**
+__pycache__/

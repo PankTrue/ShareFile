@@ -58,6 +58,13 @@ type HTTPError struct {
 	RetryAfter time.Duration
 }
 
+type requestTimeout struct{}
+
+func (requestTimeout) Error() string {
+	return "Сервер не ответил вовремя. Проверьте сеть и попробуйте снова"
+}
+func (requestTimeout) Unwrap() error { return context.DeadlineExceeded }
+
 func (e *HTTPError) Error() string {
 	switch e.Status {
 	case 401:
@@ -104,6 +111,9 @@ func (c *Client) request(ctx context.Context, method, path string, body io.Reade
 	}
 	resp, err := c.http.Do(r)
 	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, requestTimeout{}
+		}
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -119,6 +129,8 @@ func failure(resp *http.Response) error {
 	return &HTTPError{resp.StatusCode, time.Duration(min(max(seconds, 0), 60)) * time.Second}
 }
 func (c *Client) JSON(ctx context.Context, method, path string, input, output any) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	var body io.Reader
 	if input != nil {
 		b, err := json.Marshal(input)
@@ -218,6 +230,8 @@ func (c *Client) StartPairing(ctx context.Context, name string) (Pairing, error)
 	return p, nil
 }
 func (c *Client) PollPairing(ctx context.Context, id, secret string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	if !identifier.MatchString(id) {
 		return "", errors.New("Некорректный запрос подключения")
 	}
