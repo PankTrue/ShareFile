@@ -1,7 +1,7 @@
 GO ?= go
 NPM ?= npm
 
-.PHONY: build arm64 fmt check vulnerabilities web-build web-check browser-check
+.PHONY: build arm64 fmt check vulnerabilities web-build web-check browser-check desktop-check macos-build macos-check desktop-smoke
 
 build:
 	cd backend && CGO_ENABLED=0 $(GO) build -trimpath -ldflags='-s -w' -o bin/sharefile ./cmd/sharefile
@@ -29,3 +29,17 @@ web-check:
 browser-check: build
 	cd web && $(NPM) run build
 	cd web && $(NPM) run test:browser
+
+desktop-check:
+	cd clients/core && $(GO) vet ./...
+	cd clients/core && $(GO) test -race ./...
+
+macos-build:
+	GO='$(GO)' bash clients/macos/build.sh
+
+macos-check:
+	codesign --verify --deep --strict clients/macos/build/ShareFile.app
+	clients/macos/build/ShareFile.app/Contents/MacOS/ShareFile --self-test
+
+desktop-smoke: build
+	python3 scripts/desktop-smoke.py
