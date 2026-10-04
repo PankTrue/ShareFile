@@ -1,6 +1,6 @@
 {
-  "data_dir": "/opt/var/lib/sharefile",
-  "volume_id": "REPLACE_WITH_UNIQUE_STORAGE_ID",
+  "data_dir": "/tmp/mnt/745ee3e5-6027-4b29-8e14-3fdc29729706/sharefile",
+  "volume_id": "sharefile-745ee3e5-6027-4b29-8e14-3fdc29729706",
   "public_addr": "127.0.0.1:8080",
   "public_url": "https://files.REPLACE_WITH_YOUR_KEENDNS_DOMAIN",
   "admin_addr": "192.168.1.1:8081",

@@ -1,13 +1,17 @@
 GO ?= go
 NPM ?= npm
+PYTHON ?= python3
 
-.PHONY: build arm64 fmt check vulnerabilities web-build web-check browser-check desktop-check macos-build macos-check desktop-smoke
+.PHONY: build arm64 router-release fmt check vulnerabilities web-build web-check browser-check desktop-check macos-build macos-check desktop-smoke
 
 build:
 	cd backend && CGO_ENABLED=0 $(GO) build -trimpath -ldflags='-s -w' -o bin/sharefile ./cmd/sharefile
 
 arm64:
 	cd backend && GOOS=linux GOARCH=arm64 GOARM64=v8.0 CGO_ENABLED=0 $(GO) build -trimpath -ldflags='-s -w' -o bin/sharefile-linux-arm64 ./cmd/sharefile
+
+router-release: arm64 web-build
+	$(PYTHON) scripts/package-router.py
 
 fmt:
 	cd backend && $(GO) fmt ./...

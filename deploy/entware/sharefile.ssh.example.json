@@ -1,0 +1,16 @@
+{
+  "data_dir": "/tmp/mnt/745ee3e5-6027-4b29-8e14-3fdc29729706/sharefile",
+  "volume_id": "sharefile-745ee3e5-6027-4b29-8e14-3fdc29729706",
+  "public_addr": "127.0.0.1:8080",
+  "public_url": "http://127.0.0.1:8080",
+  "admin_addr": "127.0.0.1:8081",
+  "admin_url": "http://127.0.0.1:8081",
+  "log_file": "/opt/var/log/sharefile/server.jsonl",
+  "web_dir": "/opt/share/sharefile/web",
+  "insecure_local": true,
+  "reserve_bytes": 67108864,
+  "upload_slots": 2,
+  "download_slots": 4,
+  "chunk_bytes": 16777216,
+  "import_dirs": []
+}

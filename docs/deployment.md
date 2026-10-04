@@ -2,6 +2,66 @@
 
 Инструкция включает Go backend и статический React Web UI. На реальном KN-1811 установка ещё не выполнялась. Адрес `192.168.1.1`, домен и пути ниже — примеры; их заменяют после проверки конкретной установки. Desktop-пакеты выпускаются отдельно.
 
+Для установки опубликованного GitHub Release одним скриптом использовать [англоязычный README](../README.md#install-on-the-router-from-github). Этот установщик проверяет SHA-256 пакета и автоматически выбирает первую установку или обновление существующего приложения. Обычное обновление сохраняет конфигурацию, сертификаты и данные; ниже описаны локальная сборка и ручная настройка.
+
+## Первая установка и доступ из LAN/VPN
+
+Подтверждённые параметры: архитектура `aarch64`, LAN-адрес `192.168.1.1`, Entware `/opt` на `/dev/sdb` (57,6 ГБ), отдельный ext4-накопитель `/dev/sda` в `/tmp/mnt/745ee3e5-6027-4b29-8e14-3fdc29729706`. Данные и SQLite находятся в каталоге `sharefile` второго накопителя. Его `noexec` допускает хранение данных; бинарник, React-статика и логи находятся в `/opt`.
+
+Начальная конфигурация `sharefile.lan.example.json` предоставляет пользовательский интерфейс, ссылки и админку по одному HTTPS-origin `https://192.168.1.1:8081`. Они обслуживаются приватным listener; административные операции по-прежнему требуют прав администратора. HTTP-listener `127.0.0.1:8080` остаётся внутри роутера. В LAN/VPN SSH-туннель не нужен. Для VPN требуется маршрут к `192.168.1.1`; публикация через KeenDNS в этот вариант не входит.
+
+Исполняемый `/opt/etc/init.d/S90sharefile` запускается механизмом Entware `rc.unslung` после подключения накопителя с `/opt`. Supervisor перезапускает backend после выхода, включая ошибки из-за ещё не подключённого HDD или не назначенного LAN IP. Реальные boot/hotplug и правила доступа VPN нужно проверить на роутере. [Исходник rc.unslung](https://github.com/Entware/rtndev/blob/master/entware-opt/files/rc.unslung).
+
+На Mac из корня репозитория:
+
+```sh
+cd /Users/pank/Code/PetProjects/ShareFile
+nvm use 24.21.0
+make router-release
+
+ROUTER_HOST=192.168.1.1
+ROUTER_SSH_PORT=222
+ssh -p "$ROUTER_SSH_PORT" "root@$ROUTER_HOST" \
+  'mkdir -p /opt/tmp && mkdir /opt/tmp/sharefile-lan-release && tar -xzf - -C /opt/tmp/sharefile-lan-release' \
+  < backend/bin/sharefile-router.tar.gz
+```
+
+Если приложение уже установлено по прежней инструкции, включить LAN-доступ и автозапуск:
+
+```sh
+ssh -t -p "$ROUTER_SSH_PORT" "root@$ROUTER_HOST" \
+  'sh /opt/tmp/sharefile-lan-release/enable-lan.sh'
+```
+
+`enable-lan.sh` создаёт резервную копию текущего JSON, сохраняет `data_dir`, `volume_id`, настройки передачи и импорта, обновляет только сеть/TLS и сервисные скрипты, затем перезапускает сервер. Данные и аккаунты не инициализируются повторно. Пакеты `openssl-util`, `jq`, `daemonize` и `daemontools-encore` устанавливаются через opkg.
+
+Для первой установки вместо `enable-lan.sh` выполнить:
+
+```sh
+ssh -t -p "$ROUTER_SSH_PORT" "root@$ROUTER_HOST" \
+  'sh /opt/tmp/sharefile-lan-release/first-install.sh'
+```
+
+Первичный установщик проверяет mount накопителей и отсутствие прежней установки до изменений, создаёт storage и администратора, TLS, регистрирует автозапуск и запускает сервис. Ввести и подтвердить пароль `admin`, минимум 12 символов. Прерванная установка может оставить скопированные файлы; повторный запуск их не перезаписывает. Сохранить конфигурацию/`volume_id`, устранить причину и продолжить оставшиеся шаги вручную.
+
+TLS создаётся на роутере: `/opt/etc/sharefile/lan-ca.pem` — публичный корневой сертификат, `lan-ca-key.pem` — закрытый ключ CA, `admin-cert.pem` и `admin-key.pem` — сертификат/ключ сервера с SAN `IP:192.168.1.1`. Закрытые ключи имеют права 600 и не входят в release-архив. CA действует 10 лет, серверный сертификат — год. Повторный запуск настройки сохраняет CA и обновляет серверный сертификат при истечении, смене IP или остатке срока менее 30 дней; периодическое продление автоматически не запланировано. [Создание сертификатов OpenSSL](https://docs.openssl.org/3.6/man1/openssl-req/).
+
+На каждом клиенте добавить только публичный `lan-ca.pem` в доверенные. На Mac получить его через SSH и добавить доверие SSL для текущего пользователя:
+
+```sh
+ssh -p "$ROUTER_SSH_PORT" "root@$ROUTER_HOST" \
+  'cat /opt/etc/sharefile/lan-ca.pem' > /tmp/sharefile-lan-ca.pem
+
+security add-trusted-cert -r trustRoot -p ssl \
+  -k "$HOME/Library/Keychains/login.keychain-db" /tmp/sharefile-lan-ca.pem
+
+curl --fail --cacert /tmp/sharefile-lan-ca.pem https://192.168.1.1:8081/readyz
+```
+
+macOS запросит подтверждение изменения доверия. Через UI: **Keychain Access**, импорт сертификата в **login**, открыть сертификат → **Trust** → **Secure Sockets Layer (SSL)** → **Always Trust**. [Настройки доверия Apple](https://support.apple.com/guide/keychain-access/change-the-trust-settings-of-a-certificate-kyca11871/mac).
+
+Открыть `https://192.168.1.1:8081`; для первой установки вход — `admin` и созданный пароль. Сервис работает в фоне после закрытия SSH. Проверить `readyz`, вход и загрузку файла, затем автозапуск после плановой перезагрузки роутера. Команды start/stop/restart/check приведены в разделе 5. Для дальнейшей публикации через KeenDNS использовать отдельную production-конфигурацию из раздела 3, сохранив текущие `data_dir` и `volume_id`.
+
 ## 1. Проверить устройство и накопитель
 
 В shell Entware сначала выполнить только чтение:
@@ -17,7 +77,7 @@ cat /opt/etc/opkg.conf
 
 Ожидается ARM64 (`aarch64`). Проверить точную версию KeeneticOS в панели роутера, фактическую файловую систему и mount HDD, публичный WAN IP/режим KeenDNS, свободное место, публикации SMB/FTP и свободные порты. Go 1.26 требует ядро Linux 3.2+; фактическое ядро следует сопоставить с [Go minimum requirements](https://go.dev/wiki/MinimumRequirements).
 
-В примере Entware `/opt` и `/opt/var/lib/sharefile` находятся на USB HDD. Подтвердить это по mount/df, иначе выбрать абсолютный путь на проверенном USB mount. Рекомендуется ext4; FAT32 не подходит для файлов больше 4 ГБ. Форматирование и перенос существующих данных инструкция не выполняет. Выделенная директория ShareFile должна быть закрыта для записи сторонним приложениям.
+Entware и бинарник находятся на `/opt`; данные и SQLite — в `/tmp/mnt/745ee3e5-6027-4b29-8e14-3fdc29729706/sharefile` на втором накопителе. Подтвердить его mount и свободное место через `cat /proc/mounts` и `df -h /tmp/mnt/745ee3e5-6027-4b29-8e14-3fdc29729706`. Рекомендуется ext4; FAT32 не подходит для файлов больше 4 ГБ. Форматирование и перенос существующих данных инструкция не выполняет. Выделенная директория ShareFile должна быть закрыта для записи сторонним приложениям.
 
 ## 2. Собрать вне роутера
 
@@ -25,12 +85,11 @@ cat /opt/etc/opkg.conf
 
 ```sh
 make check
-make web-build
+make router-release
 make web-check
-make arm64
 ```
 
-Готовый файл: `backend/bin/sharefile-linux-arm64`, статическая Linux ARM64-сборка без cgo. Загрузить его, содержимое `web/dist/` в подкаталог `web/` и файлы `deploy/entware/` в staging-каталог на HDD. Ниже staging-каталог обозначен `/opt/tmp/sharefile-release`; создать и заполнить его отдельно перед командами установки.
+Готовый пакет: `backend/bin/sharefile-router.tar.gz`, содержит статическую Linux ARM64-сборку без cgo, статику в `dist/`, LAN/SSH/KeenDNS-конфигурации и скрипты Entware. Загрузить и распаковать его в staging-каталог `/opt/tmp/sharefile-lan-release`, как в командах первой установки выше. Для установки сразу с KeenDNS выполнить следующие разделы вручную вместо `first-install.sh`.
 
 ## 3. Подготовить конфигурацию и TLS
 
@@ -41,7 +100,7 @@ make arm64
 - `public_url` — реальный HTTPS KeenDNS origin с портом, если он нестандартный. `public_addr` — loopback endpoint для TLS-терминирующего роутера, по умолчанию `127.0.0.1:8080`.
 - `admin_addr` — конкретный LAN/VPN IP роутера и свободный порт, `admin_url` — соответствующий HTTPS origin. Wildcard/WAN listeners конфигурация отклоняет. В примере приватный порт `8081`.
 - `admin_cert`/`admin_key` — отдельный TLS-сертификат и ключ для приватного адреса. Сертификат должен быть доверенным на клиентской машине и содержать адрес/hostname в SAN; получение и установка доверия зависят от вашей локальной PKI.
-- `log_file` — каталог на HDD для JSON-логов. Сервер хранит текущий файл и `.1`, каждый до 1 МиБ. Без параметра пишет в stderr.
+- `log_file` — путь JSON-лога, в примере на накопителе Entware `/opt`. Сервер хранит текущий файл и `.1`, каждый до 1 МиБ. Без параметра пишет в stderr.
 - `web_dir` — абсолютный путь к сборке React, в примере `/opt/share/sharefile/web`. На роутер загружается только `web/dist/`, без исходников и `node_modules`.
 - `import_dirs` — только разрешённые локальные источники импорта. Пустой массив полностью отключает импорт.
 
@@ -56,12 +115,12 @@ make arm64
 ```sh
 opkg update
 opkg install daemonize daemontools-encore
-mkdir -p /opt/etc/sharefile-service /opt/etc/sharefile /opt/var/lib /opt/var/log/sharefile /opt/share/sharefile/web
+mkdir -p /opt/sbin /opt/etc/init.d /opt/etc/sharefile-service /opt/etc/sharefile /opt/var/log/sharefile /opt/share/sharefile/web
 chmod 700 /opt/etc/sharefile /opt/var/log/sharefile
-cp /opt/tmp/sharefile-release/sharefile-linux-arm64 /opt/sbin/sharefile
-cp -R /opt/tmp/sharefile-release/web/. /opt/share/sharefile/web/
-cp /opt/tmp/sharefile-release/service/run /opt/etc/sharefile-service/run
-cp /opt/tmp/sharefile-release/S90sharefile /opt/etc/init.d/S90sharefile
+cp /opt/tmp/sharefile-lan-release/sharefile-linux-arm64 /opt/sbin/sharefile
+cp -R /opt/tmp/sharefile-lan-release/dist/. /opt/share/sharefile/web/
+cp /opt/tmp/sharefile-lan-release/service/run /opt/etc/sharefile-service/run
+cp /opt/tmp/sharefile-lan-release/S90sharefile /opt/etc/init.d/S90sharefile
 chmod 755 /opt/sbin/sharefile /opt/etc/sharefile-service/run /opt/etc/init.d/S90sharefile
 chmod 600 /opt/etc/sharefile.json /opt/etc/sharefile/admin-key.pem
 /opt/sbin/sharefile init-storage -config /opt/etc/sharefile.json
@@ -81,7 +140,7 @@ chmod 600 /opt/etc/sharefile.json /opt/etc/sharefile/admin-key.pem
 /opt/etc/init.d/S90sharefile restart
 ```
 
-`start` поднимает supervisor только для этой сервисной директории. `stop` сохраняет `down` и отправляет SIGTERM серверу, ожидает остановки до 39 секунд и не вызывает killall. Сам supervisor остаётся запущенным и ждёт `start`. Такой stop сохраняется при следующем boot до явного start; для отключения автозапуска навсегда также убрать executable bit у init-скрипта.
+`start` поднимает supervisor только для этой сервисной директории. `stop` сохраняет `down` и отправляет SIGTERM серверу, ожидает остановки до 39 секунд и не вызывает killall. Сам supervisor остаётся запущенным и ждёт `start`. Остановка действует до следующего start, в том числе при загрузке Entware. Для отключения автозапуска убрать executable bit у init-скрипта: `chmod 644 /opt/etc/init.d/S90sharefile`; для включения вернуть `chmod 755` и выполнить start.
 
 Supervisor перезапускает процесс после падения; при отсутствующем/чужом маркере startup завершается ошибкой. При отключении накопителя работа не продолжается в fallback-каталоге. После возвращения накопителя сервис повторяет запуск и восстанавливает журналы/offset. Проверить реальный hotplug и перезагрузку роутера — поведение Entware mount и autorun ещё не испытано.
 

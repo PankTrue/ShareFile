@@ -1,45 +1,218 @@
 # ShareFile
 
-Лёгкое файловое хранилище с Go backend и React Web UI для Keenetic Ultra KN-1811 и Entware. Метаданные находятся в SQLite, содержимое файлов — в выделенной директории HDD. Передача потоковая, с возобновлением загрузки и HTTP Range при скачивании. Лимита размера файла и пользовательских квот нет; учитываются свободное место, резерв и место корзины/незавершённых загрузок.
+ShareFile is a lightweight file server for a Keenetic Ultra KN-1811 running Entware. It combines a Go backend, SQLite metadata, a React Web UI, and a native macOS client. Files are stored on a dedicated external drive and transferred as streams, with resumable uploads and HTTP Range downloads.
 
-Backend, Web UI на React и нативный macOS-клиент с Finder Service реализованы. Windows/Linux — следующие отдельные этапы. Публичные страницы папки и ввода пароля ссылки уже встроены в backend. Реальная работа на роутере и через KeenDNS ещё требует испытаний на устройстве.
+The default router deployment provides direct HTTPS access at **https://192.168.1.1:8081**, with automatic startup through Entware and automatic process restart. SSH is used for installation and maintenance; browsing and file transfers work directly over LAN or VPN.
 
-## Сборка и локальный запуск
+## Install on the router from GitHub
 
-Нужен Go 1.26+, проверено на Go 1.26.8. SQLite не требует cgo, отдельного сервиса или системной библиотеки. Команды выполняются из корня репозитория:
+### Requirements
+
+- An ARM64 router: `uname -m` must print `aarch64`.
+- Entware installed and its `/opt` filesystem mounted read-write with executable support.
+- Linux kernel 3.2 or newer, as required by the project's Go version.
+- Internet access from the router to GitHub and the Entware package repository.
+- A published GitHub Release containing `sharefile-router.tar.gz`, its `.sha256` file, and `install-sharefile.sh`.
+- An interactive root shell in Entware. When connecting from a computer, use `ssh -t -p 222 root@192.168.1.1`, adjusting the SSH port if necessary.
+
+The packaged defaults match this router's two-drive layout:
+
+- Entware, the executable, Web UI, and logs: `/opt` on `/dev/sdb`.
+- File contents and SQLite: `/tmp/mnt/745ee3e5-6027-4b29-8e14-3fdc29729706/sharefile` on the second ext4 drive.
+- Storage identity: `sharefile-745ee3e5-6027-4b29-8e14-3fdc29729706`.
+- LAN/VPN HTTPS address: `https://192.168.1.1:8081`.
+
+The data drive may be mounted with `noexec`; the application executable stays on `/opt`. The installer does not format drives or import existing files. For a different drive mount or router IP, adjust the deployment templates and installation scripts before building your release.
+
+### Download and install
+
+Run these commands **inside the router's Entware shell**:
+
+```sh
+opkg update
+opkg install curl ca-bundle coreutils-sha256sum
+
+curl --fail --show-error --location --proto '=https' --proto-redir '=https' \
+  https://github.com/PankTrue/ShareFile/releases/latest/download/install-sharefile.sh \
+  -o /tmp/install-sharefile.sh
+
+sh /tmp/install-sharefile.sh
+```
+
+The single installer downloads the latest stable release, verifies the archive's SHA-256 checksum, and installs it. It stages downloads on `/opt`, installs the supervisor and TLS tools, initializes storage, prompts for an administrator password, registers `/opt/etc/init.d/S90sharefile`, and starts the server.
+
+Use a password of at least 12 characters. Keep the script's stdin attached to your terminal: download it to a file as shown above so the password prompt remains interactive.
+
+To install a specific release instead:
+
+```sh
+sh /tmp/install-sharefile.sh --version v0.1.0
+```
+
+Replace `v0.1.0` with an existing release tag. If no release has been published yet, follow [Publish a GitHub release](#publish-a-github-release) first; the download URLs become available after the workflow finishes successfully.
+
+### Trust the HTTPS certificate
+
+The router creates its own local CA and a server certificate containing `IP:192.168.1.1` in its Subject Alternative Name. Add the public CA certificate to each client once. Private keys stay on the router under `/opt/etc/sharefile` with permissions `600`.
+
+On your Mac:
+
+```sh
+ssh -p 222 root@192.168.1.1 \
+  'cat /opt/etc/sharefile/lan-ca.pem' > /tmp/sharefile-lan-ca.pem
+
+security add-trusted-cert -r trustRoot -p ssl \
+  -k "$HOME/Library/Keychains/login.keychain-db" \
+  /tmp/sharefile-lan-ca.pem
+
+curl --fail --cacert /tmp/sharefile-lan-ca.pem \
+  https://192.168.1.1:8081/readyz
+```
+
+macOS asks you to authorize the trust change. You can also import the certificate into **Keychain Access → login**, open it, and set **Trust → Secure Sockets Layer (SSL) → Always Trust**. See [Apple's certificate trust instructions](https://support.apple.com/guide/keychain-access/change-the-trust-settings-of-a-certificate-kyca11871/mac).
+
+Open **https://192.168.1.1:8081** and sign in as `admin`. The same address serves files, sharing links, and administrator tools; administrator operations still require an administrator account. No SSH tunnel is needed. For VPN access, the client must have a route to `192.168.1.1`.
+
+The CA is valid for ten years; the server certificate is valid for one year. Re-running `enable-lan.sh` from a release package renews a server certificate with less than 30 days remaining while keeping the CA. Certificate renewal is not scheduled automatically.
+
+## Update an existing installation
+
+Download and run `install-sharefile.sh` using the same commands. If `/opt/etc/sharefile.json` already exists, the installer selects the update path automatically.
+
+Updates replace the executable, Web UI, and service scripts. They preserve the existing JSON configuration, TLS certificates, storage identity, accounts, and stored files. The updater stops the service before replacement, waits for `/readyz`, and restores the previous application files if startup fails.
+
+Previous application files and a configuration copy are retained under:
+
+```text
+/opt/var/backups/sharefile/release.XXXXXX/
+```
+
+These are application backups, not full data backups. Keep an offline storage backup before an upgrade that changes the database schema. Automatic updates require the standard `web_dir` at `/opt/share/sharefile/web`.
+
+For an older installation that still uses an SSH tunnel, `enable-lan.sh` in the unpacked release switches it to LAN HTTPS while preserving its storage settings. Ordinary updates preserve your existing network configuration.
+
+## Service management
+
+Run on the router:
+
+```sh
+/opt/etc/init.d/S90sharefile start
+/opt/etc/init.d/S90sharefile check
+/opt/etc/init.d/S90sharefile restart
+/opt/etc/init.d/S90sharefile stop
+```
+
+The executable init script is picked up by Entware at boot. The supervisor restarts the backend after a process failure, including startup failures while the data drive is unavailable. The service uses `GOMEMLIMIT=96MiB` and `GOGC=50`; the memory limit is a soft Go heap target, not an RSS limit.
+
+A manual stop lasts until the next start, including Entware startup after reboot. To disable automatic startup:
+
+```sh
+/opt/etc/init.d/S90sharefile stop
+chmod 644 /opt/etc/init.d/S90sharefile
+```
+
+To enable it again:
+
+```sh
+chmod 755 /opt/etc/init.d/S90sharefile
+/opt/etc/init.d/S90sharefile start
+```
+
+Logs: `/opt/var/log/sharefile/server.jsonl`, with one rotated file, each limited to 1 MiB. Health endpoints: `/healthz` for process liveness and `/readyz` for storage/database readiness.
+
+## Publish a GitHub release
+
+The [router workflow](.github/workflows/router-release.yml) runs on pushes to `master`/`main`, pull requests, and manual dispatch. It builds the Linux ARM64 executable and React assets, checks the backend and Web UI, exercises the installer, and uploads an Actions artifact named `sharefile-router`.
+
+A pushed `v*` tag also publishes a GitHub Release with three downloadable assets:
+
+- `sharefile-router.tar.gz`: server, Web UI, configuration templates, and Entware scripts.
+- `sharefile-router.tar.gz.sha256`: archive checksum.
+- `install-sharefile.sh`: the standalone download/install/update script.
+
+Commit and push the source, installer, and workflow changes first. Then choose an unused version tag, for example:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Wait for **Actions → Router build and release** to finish, then check the repository's **Releases** page. Tags containing a hyphen, such as `v0.2.0-rc.1`, are published as prereleases and are available through `--version`; the default installer selects the latest stable release.
+
+Publishing uses the repository's `GITHUB_TOKEN` with `contents: write` only in the release job. No personal access token is needed for the workflow. GitHub release downloads in the installation command assume the repository/releases are public. See the [GitHub CLI release documentation](https://cli.github.com/manual/gh_release_create).
+
+## Build locally
+
+Build requirements: Go **1.26.8**, Node.js **24.21.0**, npm, and Python **3.11+**. Go, Node.js, and Python are not required on the router; the router receives a static binary and compiled Web UI assets. SQLite does not require cgo or a separate database service.
+
+From the repository root:
+
+```sh
+make router-release
+```
+
+Output files are written to `backend/bin/`. If your Go executable is outside `PATH`, pass it explicitly:
+
+```sh
+make GO=/absolute/path/to/go router-release
+```
+
+Individual build and validation commands:
 
 ```sh
 make build
 make arm64
 make check
+make web-check
+python3 scripts/test-router-installer.py
 make vulnerabilities
-python3 scripts/smoke-test.py
 ```
 
-Результаты: `backend/bin/sharefile` для текущей машины и `backend/bin/sharefile-linux-arm64` для роутера. Пакет сервера находится в `backend/`; обычные Go-команды запускаются из этой директории. На macOS с неисправным asdf shim можно указать рабочий Go: `make GO=/absolute/path/to/go build`.
+To install a locally built package, transfer and unpack it into a fresh staging directory on `/opt`, then run `first-install.sh` for a new installation or `update.sh` for an existing one. Detailed router, KeenDNS, backup, and restore procedures are in [docs/deployment.md](docs/deployment.md).
 
-Для локального запуска с Web UI из корня репозитория нужен Node.js 24 LTS (или совместимый Node 22.12+). На роутере Node.js не используется. Фронтенд собирается в статику:
+## Local development
 
 ```sh
-make web-build
+make build web-build
 python3 scripts/configure-local.py
-```
-
-Скрипт создаёт `local-config.json` с абсолютным `web_dir`, существующий конфиг не перезаписывает. Затем:
-
-```sh
 backend/bin/sharefile init-storage -config local-config.json
 backend/bin/sharefile admin-create -config local-config.json -username admin
 backend/bin/sharefile serve -config local-config.json
 ```
 
-Пароль вводится скрыто с подтверждением, минимум 12 и максимум 256 байт. `-password-stdin` предусмотрен для автоматизации; пароль не передаётся аргументом процесса. `init-storage` создаёт свою директорию и маркер, требует существующий родительский каталог и отказывается использовать непустой каталог без своего маркера. Пример для разработки использует `/tmp/sharefile-local`; данные в `/tmp` могут быть удалены операционной системой.
+The public development interface is `http://127.0.0.1:8080`; the administrator interface is `http://127.0.0.1:8081`. `insecure_local=true` is allowed only with loopback listeners and local HTTP origins. The local example stores data in `/tmp/sharefile-local`, which the operating system may clean up.
 
-Публичный интерфейс и API разработки: `http://127.0.0.1:8080`; приватная админка и API: `http://127.0.0.1:8081`. `insecure_local=true` разрешён только при обоих loopback listeners и локальных HTTP origins. Production использует HTTPS KeenDNS для публичного origin и собственный TLS приватного listener.
+For React hot reload, run `npm run dev` and `npm run dev:admin` in separate terminals under `web/`, with the backend running. Open `http://127.0.0.1:5173` or `http://127.0.0.1:5174`. Development Vite proxies requests to the backend; deployed UI and API share one origin.
 
-## Приложение для macOS
+```sh
+make web-check
+cd web
+npx playwright install chromium
+cd ..
+make browser-check
+python3 scripts/smoke-test.py
+```
 
-Нативный интерфейс SwiftUI/AppKit и действие Finder **Службы → ShareFile: Загрузить и поделиться**. Подключение через браузер, токен в Keychain, очередь с прогрессом и возобновлением, выбор папки и настройки публичных ссылок. Общее Go-ядро находится в `clients/core/`, платформа — в `clients/macos/`.
+Browser and smoke checks use temporary storage and test accounts, without changing router data. Browser artifacts are written to the ignored `web/test-results/` directory.
+
+## Features and API
+
+- Administrator-managed users and groups, personal roots and `Uploads` folders, shared folders, and inherited reader/editor/manager permissions.
+- Streaming tus uploads with durable offsets, resumable transfers, and HTTP Range downloads. Default concurrency: two uploads and four downloads; default chunk size: 16 MiB.
+- File and live-folder sharing links with optional passwords and expiration. Revocation, permission loss, and file replacement invalidate affected links.
+- Seven-day trash, restoration, crash recovery, and explicit copy-import from configured directories. The storage directory must be reserved for ShareFile; avoid writing to it through SMB, FTP, or other applications.
+- Browser sessions with Secure/HttpOnly/SameSite cookies and CSRF protection; separately revocable device tokens approved through a browser.
+- Dedicated storage markers, a process lock, bounded logs, and offline backup/restore. Missing or replaced storage causes requests to fail; the server does not create a fallback data directory.
+
+There is no application-level file size limit or per-user quota. Free disk space and the configured reserve constrain uploads. Browser clients require sizes within JavaScript's safe integer range; other clients can use the API's int64 byte sizes.
+
+The full API contract is [api/openapi.json](api/openapi.json). Authenticate with `POST /api/v1/auth/login`; cookie-authenticated mutations require `X-CSRF-Token`. Devices use `Authorization: Bearer <device-token>`. Administrative routes exist only on the private listener; the public listener returns 404 for them.
+
+Uploads use `POST /api/v1/uploads` to create a session, `HEAD` to retrieve the durable offset, and sequential `PATCH` chunks. The backend also accepts `POST` with `X-HTTP-Method-Override: PATCH`. Downloads support Range, ETag, If-Range, and HEAD. Share URLs are returned once; persist them on the client.
+
+## macOS client
+
+The native SwiftUI/AppKit client provides browser-assisted connection, a Keychain token, a resumable upload queue, and a Finder Service. It requires macOS 13 or later. The current package uses ad-hoc signing; Windows and Linux desktop clients are planned separately.
 
 ```sh
 make macos-build
@@ -48,67 +221,14 @@ make macos-check
 make desktop-smoke
 ```
 
-Пакет `clients/macos/build/ShareFile-macOS-universal.zip` содержит приложение для Apple Silicon / Intel и установщик в `~/Applications`. Минимальная macOS 13.0, локальная подпись ad-hoc. Подробности подключения, Finder, безопасного возобновления и ограничения — [docs/macos.md](docs/macos.md).
+The package is `clients/macos/build/ShareFile-macOS-universal.zip`. See [docs/macos.md](docs/macos.md).
 
-## Web UI на React
+## Project documentation
 
-Исходники находятся в `web/`: React 19, TypeScript, Vite, отдельный пакет и lockfile. Сборка `web/dist/` обслуживается Go из `web_dir` на обоих listeners. В интерфейсе есть файлы/папки, drag-and-drop отдельных файлов, очередь с паузой/продолжением, создание и отзыв ссылок, наследуемые права, корзина и устройства. Приватная админка включает пользователей, группы, импорт и настройки. Меню учитывает эффективную роль; сервер независимо проверяет каждую операцию.
+- [Architecture and agreed requirements](docs/architecture.md).
+- [Implementation plan](docs/implementation-plan.md).
+- [Web UI development and transfer behavior](docs/web-ui.md).
+- [Deployment, KeenDNS, backup and restore](docs/deployment.md).
+- [Validation results and remaining device checks](docs/validation.md).
 
-Для разработки с обновлением React без пересборки backend запустить Go с `local-config.json`, затем из `web/` в разных терминалах:
-
-```sh
-npm ci
-npm run dev
-npm run dev:admin
-```
-
-Открыть `http://127.0.0.1:5173` (пользовательский UI) или `http://127.0.0.1:5174` (админка). Vite проксирует запросы на loopback `8080`/`8081`; его Origin rewrite используется только при разработке. Production работает на едином origin с API. Инструкции и ограничения: [docs/web-ui.md](docs/web-ui.md).
-
-Проверки из корня репозитория:
-
-```sh
-make web-check
-cd web
-npx playwright install chromium
-cd ..
-make browser-check
-```
-
-Браузерный сценарий создаёт временное хранилище, тестовые аккаунты и Go-процесс на свободных loopback-портах; реальные данные не затрагивает. Скриншоты сохраняет в игнорируемый `web/test-results/`.
-
-## Возможности и правила
-
-- Администраторы создают аккаунты и группы, сбрасывают пароли и отключают пользователей. Отключение сохраняет файлы и отзывает сессии, устройства и публичные ссылки. Последнего активного администратора отключить нельзя.
-- Личные корни и папки `Uploads`; общие папки с наследуемыми ролями reader/editor/manager. Роли пользователя и групп суммируются по наиболее сильному разрешению. Manager управляет правами и ссылками; editor редактирует все файлы доступной папки.
-- Tus 1.0: создание, HEAD для durable offset, PATCH чанками, отмена, истечение срока. Незавершённые загрузки недоступны как файлы. По умолчанию chunk 16 МиБ, два upload и четыре download одновременно; на upload передаются только небольшие буферы.
-- Публичные ссылки на файлы и папки, независимые токены, срок действия и необязательный пароль. По умолчанию срок — семь дней. Folder share показывает актуальное содержимое. Отзыв или потеря manager-прав необратимы; повторная выдача прав/восстановление объекта ссылку не возвращают.
-- Автоматические суффиксы при совпадении имён. Явная замена перемещает старый файл в корзину и создаёт новый объект. Прямые ссылки старого файла отзываются.
-- Корзина на семь дней, восстановление и ранняя очистка. Purge имеет журнал восстановления после сбоя; очистка папки удаляет и ранее удалённые объекты внутри неё.
-- Явный импорт-копирование регулярного файла из настроенных источников, с сохранением оригинала. Произвольные внешние пути и выбранные symlinks запрещены.
-- Browser-сессии на 24 часа с HttpOnly/Secure/SameSite cookie и CSRF. Отдельные отзываемые device tokens выдаются после одноразового подтверждения браузером, срок 180 дней.
-- `/healthz`, `/readyz`, проверка USB-корня и маркера, process lock, восстановление прерванных операций, offline backup/restore, ограниченные JSON-логи. После изменения/пропажи корня API возвращает 503; сервер завершится при следующей минутной проверке, supervisor повторит запуск после возвращения накопителя. Другой каталог автоматически не создаётся.
-
-## API
-
-Полный контракт: [api/openapi.json](api/openapi.json). Все ID непрозрачные; время — Unix seconds, размеры/offset — int64 bytes. Web UI проверяет безопасный целочисленный размер файла и не загружает файл целиком в память. Размеры вне диапазона JavaScript safe integers требуют отдельного клиента.
-
-Первый запрос — `POST /api/v1/auth/login` с JSON `username` и `password`. Ответ содержит пользователя и `csrf_token`, а cookie устанавливается сервером. На cookie-аутентифицированных изменениях нужен `X-CSRF-Token`; чужой `Origin` отклоняется. Устройство использует `Authorization: Bearer <device-token>`. Административные маршруты `/api/v1/admin/*` зарегистрированы только на приватном listener; публичный возвращает 404 независимо от прав пользователя.
-
-Загрузка выполняется последовательно:
-
-1. `POST /api/v1/uploads`, пустое тело, `Tus-Resumable: 1.0.0`, `Upload-Length`, `Upload-Metadata: filename BASE64,folder_id BASE64`. Доступный размер chunk сообщает `Sharefile-Chunk-Size`. Необязательный `Idempotency-Key` позволяет повторить создание без дубля при тех же параметрах.
-2. Сохранить `Location` и `Sharefile-File-ID`; передавать `PATCH` на `Location`, `Content-Type: application/offset+octet-stream`, `Upload-Offset`. После каждого принятого chunk данные синхронизируются до подтверждения нового offset.
-3. После обрыва сделать `HEAD` и продолжить с подтверждённого `Upload-Offset`. Когда offset равен длине и `Sharefile-Upload-State=complete`, файл доступен через `/api/v1/nodes/{file-id}/content`. Скачивание поддерживает Range, ETag, If-Range и HEAD.
-4. `POST /api/v1/shares` с `node_id` создаёт публичную ссылку. Исходный URL возвращается один раз; в SQLite хранятся только hashes токенов. Сохранять URL нужно на стороне клиента.
-
-Idempotency относится к жизни upload record: по умолчанию семь дней после последнего chunk, после чего запись удаляется. Готовый файл сохраняется. Tus DELETE завершённой сессии также сохраняет готовый файл; удаление файла выполняется через `/nodes/{id}` и корзину.
-
-## Установка и обслуживание
-
-[Инструкция Entware/KeenDNS](docs/deployment.md) содержит подготовку TLS, supervision, установку, backup/restore и откат. [Конфигурация production](deploy/entware/sharefile.example.json) содержит примеры адресов, которые нужно заменить после проверки роутера. Файлы приложения и SQLite не следует редактировать или открывать для записи через SMB/FTP/другие приложения.
-
-Из API изменяется срок незавершённых загрузок: от часа до 365 дней. Пути, TLS, origins, listeners, резерв и concurrency задаются JSON-конфигурацией при старте. Создание/чтение групп и изменение состава реализованы; удаление/переименование групп и изменение роли admin у существующего аккаунта в текущий API не входят.
-
-Структура: `backend/cmd/sharefile` — запуск/CLI; `internal/config`, `metadata`, `identity`, `access`, `files`, `shares`, `httpapi`, `maintenance`, `logging` — модули. Используются `net/http`, `database/sql`, `slog`, контексты и конкретное SQLite-хранилище. Интерфейс Queries существует для общего поведения DB/Tx; отдельных интерфейсов, повторяющих каждый struct, нет.
-
-Согласованные требования: [architecture.md](docs/architecture.md). Отдельные этапы: [implementation-plan.md](docs/implementation-plan.md). Результаты локальной проверки: [validation.md](docs/validation.md).
+The detailed documents currently use Russian. Local backend, Web UI, TLS, and installer checks have passed; installation on the real router, boot/hotplug behavior, large-file transfers, VPN access, and external KeenDNS proxy behavior still need device verification.

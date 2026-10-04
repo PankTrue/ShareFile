@@ -1,0 +1,79 @@
+name: Router build and release
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.8'
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build router release
+        run: make router-release
+      - name: Check backend and Web UI
+        run: make check web-check
+      - name: Check installer and release package
+        run: |
+          for script in deploy/entware/*.sh deploy/entware/S90sharefile deploy/entware/service/run; do
+            sh -n "$script"
+          done
+          python3 scripts/test-router-installer.py
+          cd backend/bin
+          sha256sum -c sharefile-router.tar.gz.sha256
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sharefile-router
+          if-no-files-found: error
+          path: |
+            backend/bin/sharefile-router.tar.gz
+            backend/bin/sharefile-router.tar.gz.sha256
+            backend/bin/install-sharefile.sh
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: sharefile-router
+          path: release
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release/* --clobber
+          else
+            case "$RELEASE_TAG" in
+              *-*) gh release create "$RELEASE_TAG" release/* --verify-tag --generate-notes --title "ShareFile $RELEASE_TAG" --prerelease ;;
+              *) gh release create "$RELEASE_TAG" release/* --verify-tag --generate-notes --title "ShareFile $RELEASE_TAG" --latest ;;
+            esac
+          fi
