@@ -8,6 +8,7 @@
   "admin_cert": "/opt/etc/sharefile/admin-cert.pem",
   "admin_key": "/opt/etc/sharefile/admin-key.pem",
   "log_file": "/opt/var/log/sharefile/server.jsonl",
+  "web_dir": "/opt/share/sharefile/web",
   "insecure_local": false,
   "reserve_bytes": 67108864,
   "upload_slots": 2,

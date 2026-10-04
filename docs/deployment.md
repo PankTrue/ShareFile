@@ -1,6 +1,6 @@
 # Установка ShareFile через Entware
 
-Инструкция подготовлена для backend-этапа. На реальном KN-1811 установка ещё не выполнялась. Адрес `192.168.1.1`, домен и пути ниже — примеры; их заменяют после проверки конкретной установки. Полный Web UI и desktop-пакеты выпускаются отдельно.
+Инструкция включает Go backend и статический React Web UI. На реальном KN-1811 установка ещё не выполнялась. Адрес `192.168.1.1`, домен и пути ниже — примеры; их заменяют после проверки конкретной установки. Desktop-пакеты выпускаются отдельно.
 
 ## 1. Проверить устройство и накопитель
 
@@ -25,10 +25,12 @@ cat /opt/etc/opkg.conf
 
 ```sh
 make check
+make web-build
+make web-check
 make arm64
 ```
 
-Готовый файл: `backend/bin/sharefile-linux-arm64`, статическая Linux ARM64-сборка без cgo. Загрузить его и файлы `deploy/entware/` в staging-каталог на HDD. Ниже staging-каталог обозначен `/opt/tmp/sharefile-release`; создать и заполнить его отдельно перед командами установки.
+Готовый файл: `backend/bin/sharefile-linux-arm64`, статическая Linux ARM64-сборка без cgo. Загрузить его, содержимое `web/dist/` в подкаталог `web/` и файлы `deploy/entware/` в staging-каталог на HDD. Ниже staging-каталог обозначен `/opt/tmp/sharefile-release`; создать и заполнить его отдельно перед командами установки.
 
 ## 3. Подготовить конфигурацию и TLS
 
@@ -40,6 +42,7 @@ make arm64
 - `admin_addr` — конкретный LAN/VPN IP роутера и свободный порт, `admin_url` — соответствующий HTTPS origin. Wildcard/WAN listeners конфигурация отклоняет. В примере приватный порт `8081`.
 - `admin_cert`/`admin_key` — отдельный TLS-сертификат и ключ для приватного адреса. Сертификат должен быть доверенным на клиентской машине и содержать адрес/hostname в SAN; получение и установка доверия зависят от вашей локальной PKI.
 - `log_file` — каталог на HDD для JSON-логов. Сервер хранит текущий файл и `.1`, каждый до 1 МиБ. Без параметра пишет в stderr.
+- `web_dir` — абсолютный путь к сборке React, в примере `/opt/share/sharefile/web`. На роутер загружается только `web/dist/`, без исходников и `node_modules`.
 - `import_dirs` — только разрешённые локальные источники импорта. Пустой массив полностью отключает импорт.
 
 Публичное HTTPS завершается на Keenetic, поэтому backend public listener использует HTTP внутри роутера. Если KeenDNS не достигает loopback на конкретной версии OS, проверить привязку к конкретному LAN IP и ограничение доступа firewall; WAN-доступ непосредственно к HTTP backend не нужен. Приватный listener обслуживает TLS самим Go-сервером. Публикация приватного listener через KeenDNS не предусматривается.
@@ -53,9 +56,10 @@ make arm64
 ```sh
 opkg update
 opkg install daemonize daemontools-encore
-mkdir -p /opt/etc/sharefile-service /opt/etc/sharefile /opt/var/lib /opt/var/log/sharefile
+mkdir -p /opt/etc/sharefile-service /opt/etc/sharefile /opt/var/lib /opt/var/log/sharefile /opt/share/sharefile/web
 chmod 700 /opt/etc/sharefile /opt/var/log/sharefile
 cp /opt/tmp/sharefile-release/sharefile-linux-arm64 /opt/sbin/sharefile
+cp -R /opt/tmp/sharefile-release/web/. /opt/share/sharefile/web/
 cp /opt/tmp/sharefile-release/service/run /opt/etc/sharefile-service/run
 cp /opt/tmp/sharefile-release/S90sharefile /opt/etc/init.d/S90sharefile
 chmod 755 /opt/sbin/sharefile /opt/etc/sharefile-service/run /opt/etc/init.d/S90sharefile
@@ -97,7 +101,7 @@ curl --fail http://127.0.0.1:8080/readyz
 
 Приватный `8081` доступен только по LAN/VPN: не создавать для него KeenDNS-публикацию, NAT forwarding или WAN firewall allow. Из внешней сети `https://files.<домен>/api/v1/admin/users` должен возвращать 404; подключение к приватному порту должно быть недоступно.
 
-Полный Web UI ещё не выпущен. Установив его отдельную сборку, указать абсолютный `web_dir` и перезапустить backend. Директорию статики ограничить своей сборкой; секретные конфигурации туда не помещать.
+React UI доступен на публичном origin для пользовательских операций; админка — на приватном HTTPS origin. Указать абсолютный `web_dir` и перезапустить backend. Директорию статики ограничить своей сборкой; секретные конфигурации туда не помещать. Статическая сборка общая, административные API и меню доступны только через приватный listener. При обновлении заменять всю директорию сборки вместе с новым `index.html` и hashed assets.
 
 ## 7. Offline backup и восстановление
 

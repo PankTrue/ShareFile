@@ -1684,7 +1684,7 @@
         "tags": [
           "API"
         ],
-        "description": "Manager required. Default expires in seven days; never_expires=true is mutually exclusive with expires_at. Password is optional, otherwise 12–256 bytes. Raw URL is returned once. Folder links show live contents recursively within the shared subtree.",
+        "description": "Manager required. Default expires in seven days; never_expires=true is mutually exclusive with expires_at. Password is optional, otherwise 12\u2013256 bytes. Raw URL is returned once. Folder links show live contents recursively within the shared subtree.",
         "parameters": [
           {
             "name": "X-CSRF-Token",
@@ -2601,6 +2601,87 @@
         ],
         "x-private-listener-only": true
       }
+    },
+    "/api/v1/ui": {
+      "get": {
+        "summary": "Read non-secret UI capabilities of this listener",
+        "operationId": "get_api_v1_ui",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "UI capabilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UIInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/principals": {
+      "get": {
+        "summary": "Search active users and groups for a folder grant",
+        "description": "Requires manager on the folder. Returns names and IDs only. Does not expose account status or group memberships. Bounded to 100 results per page.",
+        "operationId": "get_node_principals",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Principal directory page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Principal"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2686,6 +2767,13 @@
           "trash_root": {
             "type": "string",
             "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "effective_role": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3,
+            "readOnly": true,
+            "description": "Present in live node GET/list/create views. Mutations independently enforce current access."
           }
         },
         "required": [
@@ -2716,6 +2804,11 @@
             "minimum": 0,
             "maximum": 3,
             "description": "0 removes the direct grant; 1 reader, 2 editor, 3 manager. Inherited grants remain effective."
+          },
+          "principal_name": {
+            "type": "string",
+            "readOnly": true,
+            "description": "Present on grants GET. The PUT input remains principal_type, principal_id and role only."
           }
         },
         "required": [
@@ -2846,11 +2939,16 @@
           },
           "csrf_token": {
             "type": "string"
+          },
+          "admin_listener": {
+            "type": "boolean",
+            "description": "True only on the private administrative listener."
           }
         },
         "required": [
           "user",
-          "csrf_token"
+          "csrf_token",
+          "admin_listener"
         ],
         "additionalProperties": false
       },
@@ -2923,6 +3021,49 @@
         "required": [
           "parent_id",
           "name"
+        ],
+        "additionalProperties": false
+      },
+      "Principal": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "user",
+              "group"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "UIInfo": {
+        "type": "object",
+        "properties": {
+          "admin_listener": {
+            "type": "boolean"
+          },
+          "chunk_bytes": {
+            "type": "integer"
+          },
+          "upload_slots": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "admin_listener",
+          "chunk_bytes",
+          "upload_slots"
         ],
         "additionalProperties": false
       }

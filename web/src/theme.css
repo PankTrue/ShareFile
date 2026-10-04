@@ -1,0 +1,11 @@
+:root {
+  --page: #f7f9fc;
+  --ink: #283a54;
+  --muted: #8a97aa;
+  --line: #e8edf4;
+  --blue: #3478d5;
+  --pale: #edf4ff;
+  --focus: #8ab3ef;
+  --danger: #cc5555;
+  color-scheme: light;
+}

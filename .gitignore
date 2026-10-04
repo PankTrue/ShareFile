@@ -37,3 +37,8 @@ deploy/entware/sharefile.json
 *.pem
 cookies.txt
 local-config.json
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
+web/test-results/
+web/playwright-report/

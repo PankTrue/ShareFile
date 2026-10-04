@@ -61,6 +61,9 @@ func (a *App) Public() http.Handler  { return a.handler(false) }
 func (a *App) Private() http.Handler { return a.handler(true) }
 func (a *App) handler(private bool) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/ui", func(w http.ResponseWriter, r *http.Request) {
+		jsonReply(w, 200, map[string]any{"admin_listener": private, "chunk_bytes": a.Config.ChunkBytes, "upload_slots": a.Config.UploadSlots})
+	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		jsonReply(w, 200, map[string]any{"status": "alive", "api_version": "v1"})
 	})
@@ -79,7 +82,7 @@ func (a *App) handler(private bool) http.Handler {
 	})
 	mux.HandleFunc("POST /api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) { a.login(w, r, private) })
 	mux.HandleFunc("GET /api/v1/me", a.auth(false, func(w http.ResponseWriter, r *http.Request, u identity.Actor) {
-		jsonReply(w, 200, map[string]any{"user": u.User, "csrf_token": u.CSRF})
+		jsonReply(w, 200, map[string]any{"user": u.User, "csrf_token": u.CSRF, "admin_listener": private})
 	}))
 	mux.HandleFunc("POST /api/v1/auth/logout", a.auth(false, func(w http.ResponseWriter, r *http.Request, u identity.Actor) {
 		if u.Device {
@@ -129,17 +132,19 @@ func (a *App) handler(private bool) http.Handler {
 	mux.HandleFunc("POST /api/v1/folders", a.auth(false, a.createFolder))
 	mux.HandleFunc("GET /api/v1/nodes/{id}", a.auth(false, func(w http.ResponseWriter, r *http.Request, u identity.Actor) {
 		n, err := a.Files.Node(r.Context(), u.ID, r.PathValue("id"))
-		respond(w, r, n, err)
+		if err != nil {
+			fail(w, r, err)
+			return
+		}
+		a.replyNode(w, r, u.ID, n, 200)
 	}))
 	mux.HandleFunc("PATCH /api/v1/nodes/{id}", a.auth(false, a.moveNode))
 	mux.HandleFunc("DELETE /api/v1/nodes/{id}", a.auth(false, func(w http.ResponseWriter, r *http.Request, u identity.Actor) {
 		noContent(w, r, a.Files.Delete(r.Context(), u.ID, r.PathValue("id")))
 	}))
 	mux.HandleFunc("GET /api/v1/nodes/{id}/content", a.auth(false, a.download))
-	mux.HandleFunc("GET /api/v1/nodes/{id}/grants", a.auth(false, func(w http.ResponseWriter, r *http.Request, u identity.Actor) {
-		out, err := a.Access.Grants(r.Context(), u.ID, r.PathValue("id"))
-		respond(w, r, out, err)
-	}))
+	mux.HandleFunc("GET /api/v1/nodes/{id}/grants", a.auth(false, a.namedGrants))
+	mux.HandleFunc("GET /api/v1/nodes/{id}/principals", a.auth(false, a.principals))
 	mux.HandleFunc("PUT /api/v1/nodes/{id}/grants", a.auth(false, func(w http.ResponseWriter, r *http.Request, u identity.Actor) {
 		var g access.Grant
 		if !decode(w, r, &g) {
@@ -191,14 +196,23 @@ func (a *App) handler(private bool) http.Handler {
 		a.adminRoutes(mux)
 	}
 	if a.Config.WebDir != "" {
-		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/s/") {
 				http.NotFound(w, r)
+				return
+			}
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				w.Header().Set("Allow", "GET, HEAD")
+				w.WriteHeader(http.StatusMethodNotAllowed)
 				return
 			}
 			clean := filepath.Clean("/" + r.URL.Path)
 			name := filepath.Join(a.Config.WebDir, clean)
 			if info, err := os.Stat(name); err != nil || info.IsDir() {
+				if filepath.Ext(clean) != "" {
+					http.NotFound(w, r)
+					return
+				}
 				name = filepath.Join(a.Config.WebDir, "index.html")
 			}
 			http.ServeFile(w, r, name)
@@ -356,7 +370,7 @@ func (a *App) login(w http.ResponseWriter, r *http.Request, private bool) {
 		return
 	}
 	a.setSession(w, token, 86400)
-	jsonReply(w, 200, map[string]any{"user": u, "csrf_token": csrf})
+	jsonReply(w, 200, map[string]any{"user": u, "csrf_token": csrf, "admin_listener": private})
 }
 func (a *App) startDevice(w http.ResponseWriter, r *http.Request) {
 	if !a.allow("device:" + peer(r)) {

@@ -1,8 +1,8 @@
 # ShareFile
 
-Лёгкий Go backend файлового хранилища для Keenetic Ultra KN-1811 и Entware. Метаданные находятся в SQLite, содержимое файлов — в выделенной директории HDD. Передача потоковая, с возобновлением загрузки и HTTP Range при скачивании. Лимита размера файла и пользовательских квот нет; учитываются свободное место, резерв и место корзины/незавершённых загрузок.
+Лёгкое файловое хранилище с Go backend и React Web UI для Keenetic Ultra KN-1811 и Entware. Метаданные находятся в SQLite, содержимое файлов — в выделенной директории HDD. Передача потоковая, с возобновлением загрузки и HTTP Range при скачивании. Лимита размера файла и пользовательских квот нет; учитываются свободное место, резерв и место корзины/незавершённых загрузок.
 
-Реализован отдельный backend-этап согласованного проекта. Полный Web UI и desktop-клиенты macOS/Linux/Windows — следующие отдельные этапы. Публичные страницы папки и ввода пароля ссылки уже встроены в backend. Реальная работа на роутере и через KeenDNS ещё требует испытаний на устройстве.
+Backend и Web UI на React реализованы. Desktop-клиенты macOS/Linux/Windows — следующие отдельные этапы. Публичные страницы папки и ввода пароля ссылки уже встроены в backend. Реальная работа на роутере и через KeenDNS ещё требует испытаний на устройстве.
 
 ## Сборка и локальный запуск
 
@@ -18,17 +18,50 @@ python3 scripts/smoke-test.py
 
 Результаты: `backend/bin/sharefile` для текущей машины и `backend/bin/sharefile-linux-arm64` для роутера. Пакет сервера находится в `backend/`; обычные Go-команды запускаются из этой директории. На macOS с неисправным asdf shim можно указать рабочий Go: `make GO=/absolute/path/to/go build`.
 
-Для локального запуска из корня репозитория:
+Для локального запуска с Web UI из корня репозитория нужен Node.js 24 LTS (или совместимый Node 22.12+). На роутере Node.js не используется. Фронтенд собирается в статику:
 
 ```sh
-backend/bin/sharefile init-storage -config deploy/local.example.json
-backend/bin/sharefile admin-create -config deploy/local.example.json -username admin
-backend/bin/sharefile serve -config deploy/local.example.json
+make web-build
+python3 scripts/configure-local.py
+```
+
+Скрипт создаёт `local-config.json` с абсолютным `web_dir`, существующий конфиг не перезаписывает. Затем:
+
+```sh
+backend/bin/sharefile init-storage -config local-config.json
+backend/bin/sharefile admin-create -config local-config.json -username admin
+backend/bin/sharefile serve -config local-config.json
 ```
 
 Пароль вводится скрыто с подтверждением, минимум 12 и максимум 256 байт. `-password-stdin` предусмотрен для автоматизации; пароль не передаётся аргументом процесса. `init-storage` создаёт свою директорию и маркер, требует существующий родительский каталог и отказывается использовать непустой каталог без своего маркера. Пример для разработки использует `/tmp/sharefile-local`; данные в `/tmp` могут быть удалены операционной системой.
 
-Публичный API разработки: `http://127.0.0.1:8080`; приватный административный API: `http://127.0.0.1:8081`. `insecure_local=true` разрешён только при обоих loopback listeners и локальных HTTP origins. Production использует HTTPS KeenDNS для публичного origin и собственный TLS приватного listener.
+Публичный интерфейс и API разработки: `http://127.0.0.1:8080`; приватная админка и API: `http://127.0.0.1:8081`. `insecure_local=true` разрешён только при обоих loopback listeners и локальных HTTP origins. Production использует HTTPS KeenDNS для публичного origin и собственный TLS приватного listener.
+
+## Web UI на React
+
+Исходники находятся в `web/`: React 19, TypeScript, Vite, отдельный пакет и lockfile. Сборка `web/dist/` обслуживается Go из `web_dir` на обоих listeners. В интерфейсе есть файлы/папки, drag-and-drop отдельных файлов, очередь с паузой/продолжением, создание и отзыв ссылок, наследуемые права, корзина и устройства. Приватная админка включает пользователей, группы, импорт и настройки. Меню учитывает эффективную роль; сервер независимо проверяет каждую операцию.
+
+Для разработки с обновлением React без пересборки backend запустить Go с `local-config.json`, затем из `web/` в разных терминалах:
+
+```sh
+npm ci
+npm run dev
+npm run dev:admin
+```
+
+Открыть `http://127.0.0.1:5173` (пользовательский UI) или `http://127.0.0.1:5174` (админка). Vite проксирует запросы на loopback `8080`/`8081`; его Origin rewrite используется только при разработке. Production работает на едином origin с API. Инструкции и ограничения: [docs/web-ui.md](docs/web-ui.md).
+
+Проверки из корня репозитория:
+
+```sh
+make web-check
+cd web
+npx playwright install chromium
+cd ..
+make browser-check
+```
+
+Браузерный сценарий создаёт временное хранилище, тестовые аккаунты и Go-процесс на свободных loopback-портах; реальные данные не затрагивает. Скриншоты сохраняет в игнорируемый `web/test-results/`.
 
 ## Возможности и правила
 
@@ -44,7 +77,7 @@ backend/bin/sharefile serve -config deploy/local.example.json
 
 ## API
 
-Полный контракт: [api/openapi.json](api/openapi.json). Все ID непрозрачные; время — Unix seconds, размеры/offset — int64 bytes. Для будущих JavaScript-клиентов размер больше `2^53` следует обрабатывать отдельно, не округлять.
+Полный контракт: [api/openapi.json](api/openapi.json). Все ID непрозрачные; время — Unix seconds, размеры/offset — int64 bytes. Web UI проверяет безопасный целочисленный размер файла и не загружает файл целиком в память. Размеры вне диапазона JavaScript safe integers требуют отдельного клиента.
 
 Первый запрос — `POST /api/v1/auth/login` с JSON `username` и `password`. Ответ содержит пользователя и `csrf_token`, а cookie устанавливается сервером. На cookie-аутентифицированных изменениях нужен `X-CSRF-Token`; чужой `Origin` отклоняется. Устройство использует `Authorization: Bearer <device-token>`. Административные маршруты `/api/v1/admin/*` зарегистрированы только на приватном listener; публичный возвращает 404 независимо от прав пользователя.
 

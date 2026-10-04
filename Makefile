@@ -1,6 +1,7 @@
 GO ?= go
+NPM ?= npm
 
-.PHONY: build arm64 fmt check vulnerabilities
+.PHONY: build arm64 fmt check vulnerabilities web-build web-check browser-check
 
 build:
 	cd backend && CGO_ENABLED=0 $(GO) build -trimpath -ldflags='-s -w' -o bin/sharefile ./cmd/sharefile
@@ -17,3 +18,14 @@ check:
 
 vulnerabilities:
 	cd backend && $(GO) run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
+web-build:
+	cd web && $(NPM) ci
+	cd web && $(NPM) run build
+
+web-check:
+	cd web && $(NPM) run check
+
+browser-check: build
+	cd web && $(NPM) run build
+	cd web && $(NPM) run test:browser

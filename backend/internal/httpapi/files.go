@@ -19,7 +19,20 @@ func (a *App) listNodes(w http.ResponseWriter, r *http.Request, u identity.Actor
 		return
 	}
 	out, err := a.Files.List(r.Context(), u.ID, r.URL.Query().Get("parent_id"), limit, offset)
-	respond(w, r, out, err)
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	views := make([]nodeView, 0, len(out))
+	for _, n := range out {
+		view, err := a.viewNode(r, u.ID, n)
+		if err != nil {
+			fail(w, r, err)
+			return
+		}
+		views = append(views, view)
+	}
+	jsonReply(w, 200, views)
 }
 func (a *App) createFolder(w http.ResponseWriter, r *http.Request, u identity.Actor) {
 	var in struct {
@@ -34,7 +47,7 @@ func (a *App) createFolder(w http.ResponseWriter, r *http.Request, u identity.Ac
 		fail(w, r, err)
 		return
 	}
-	jsonReply(w, 201, out)
+	a.replyNode(w, r, u.ID, out, 201)
 }
 func (a *App) moveNode(w http.ResponseWriter, r *http.Request, u identity.Actor) {
 	var in struct {
