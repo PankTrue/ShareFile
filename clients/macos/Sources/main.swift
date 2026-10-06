@@ -5,9 +5,23 @@ import SwiftUI
     var window: NSWindow!
     var statusItem: NSStatusItem!
     var model: Model!
-    private var initialFiles: [URL] = []
+    private var pendingFinderFiles: [URL] = []
+    private var connectionRestored = false
+    private var notifications: UploadNotifications!
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        prepareModel()
+        notifications = UploadNotifications()
+        notifications.onOpen = { [weak self] in self?.model.page = "files"; self?.showWindow() }
+        notifications.onNotice = { [weak self] in self?.model.notice = $0 }
+        notifications.isEnabled = { [weak self] in self?.model.settings.notifyUploads == true }
+        model.onUploadCompletion = { [weak self] completion in
+            Task { @MainActor [weak self] in await self?.notifications.send(completion) }
+        }
+        NSApp.servicesProvider = self
+    }
+    private func prepareModel() {
+        guard model == nil else { return }
         let directory: URL
         if let index = CommandLine.arguments.firstIndex(of: "--test-state-dir"), CommandLine.arguments.count > index + 1 {
             directory = URL(fileURLWithPath: CommandLine.arguments[index + 1], isDirectory: true)
@@ -15,6 +29,9 @@ import SwiftUI
             directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ShareFile", isDirectory: true)
         }
         model = Model(stateURL: directory.appendingPathComponent("state.json"))
+    }
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        prepareModel()
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 700), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "ShareFile"
         window.titlebarAppearsTransparent = true
@@ -42,6 +59,7 @@ import SwiftUI
         statusItem.button?.image = NSImage(systemSymbolName: "arrow.up.doc", accessibilityDescription: "ShareFile")
         let menu = NSMenu()
         menu.addItem(withTitle: "Открыть ShareFile", action: #selector(showWindow), keyEquivalent: "")
+        menu.addItem(withTitle: "Настройки…", action: #selector(settings), keyEquivalent: "")
         menu.addItem(withTitle: "Загрузить и поделиться…", action: #selector(pickFiles), keyEquivalent: "")
         menu.addItem(withTitle: "Приостановить загрузки", action: #selector(pauseAll), keyEquivalent: "")
         menu.addItem(.separator())
@@ -51,11 +69,22 @@ import SwiftUI
         statusItem.menu = menu
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
-        showWindow()
-        if !initialFiles.isEmpty { model.add(initialFiles); initialFiles = [] }
-        Task { await model.restoreConnection() }
+        if (notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool ?? true) && pendingFinderFiles.isEmpty { showWindow() }
+        Task {
+            await model.restoreConnection()
+            finishRestoringConnection()
+        }
     }
-    @objc func showWindow() { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
+    private func finishRestoringConnection() {
+        connectionRestored = true
+        let files = pendingFinderFiles; pendingFinderFiles = []
+        if !files.isEmpty { receiveFinderFiles(files) }
+    }
+    @objc func showWindow() {
+        guard let window else { return }
+        NSApp.setActivationPolicy(.regular)
+        window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+    }
     @objc func settings() { model.page = "settings"; showWindow() }
     @objc func pickFiles() { showWindow(); model.chooseFiles() }
     @objc func pauseAll() { model.pauseAll() }
@@ -66,7 +95,7 @@ import SwiftUI
     @objc func uploadAndShare(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
         let files = Self.fileURLs(pasteboard)
         guard !files.isEmpty else { error.pointee = "Не удалось получить выбранные файлы"; return }
-        showWindow(); model.add(files)
+        receiveFinderFiles(files)
     }
     nonisolated static func fileURLs(_ pasteboard: NSPasteboard) -> [URL] {
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty { return urls }
@@ -74,14 +103,38 @@ import SwiftUI
         return (pasteboard.propertyList(forType: legacy) as? [String] ?? []).map { URL(fileURLWithPath: $0) }
     }
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
-        let urls = filenames.map { URL(fileURLWithPath: $0) }
-        if model == nil { initialFiles.append(contentsOf: urls) }
-        else { showWindow(); model.add(urls) }
+        receiveFinderFiles(filenames.map { URL(fileURLWithPath: $0) })
         sender.reply(toOpenOrPrint: .success)
     }
+    private func receiveFinderFiles(_ files: [URL]) {
+        guard connectionRestored else { pendingFinderFiles.append(contentsOf: files); return }
+        if !model.settings.silentFinderUploads || !model.connected || model.settings.folder.isEmpty {
+            if !model.connected { model.page = "settings" }
+            showWindow()
+        }
+        model.add(files)
+    }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
-    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { model.quit(); return .terminateNow }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { model?.quit(); return .terminateNow }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    static func verifySilentFinderLaunch(model: Model, pasteboard: NSPasteboard) throws {
+        NSApplication.shared.setActivationPolicy(.accessory)
+        let delegate = AppDelegate(); delegate.model = model
+        delegate.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification, userInfo: [NSApplication.launchIsDefaultUserInfoKey: false]))
+        defer {
+            NSStatusBar.system.removeStatusItem(delegate.statusItem)
+            delegate.window.close()
+            NSApp.servicesProvider = nil
+        }
+        var error: NSString?
+        delegate.uploadAndShare(pasteboard, userData: nil, error: &error)
+        guard error == nil, !delegate.window.isVisible, !delegate.pendingFinderFiles.isEmpty else { throw AppFailure(message: "Finder cold launch opened a window or lost files during connection restore") }
+        model.settings.owner = "self-test-owner"; model.settings.folder = "self-test-folder"; model.token = "disposable-test-token"
+        delegate.finishRestoringConnection()
+        delegate.uploadAndShare(pasteboard, userData: nil, error: &error)
+        guard error == nil, !delegate.window.isVisible, NSApp.activationPolicy() == .accessory else { throw AppFailure(message: "Finder upload activated the existing background app") }
+    }
 }
 
 if CommandLine.arguments.contains("--self-test") {
@@ -107,20 +160,29 @@ if CommandLine.arguments.contains("--self-test") {
             var interrupted = sample; interrupted.status = "uploading"; interrupted.size = 5_368_709_123
             var sharing = sample; sharing.id = "share-test"; sharing.status = "sharing"
             let preferences = Preferences(uploads: [interrupted, sharing])
-            try JSONEncoder().encode(preferences).write(to: state)
+            var legacy = try JSONSerialization.jsonObject(with: JSONEncoder().encode(preferences)) as! [String: Any]
+            legacy["origin"] = "https://existing.example"; legacy["owner"] = "existing-owner"; legacy["folder"] = "existing-folder"
+            legacy.removeValue(forKey: "silentFinderUploads"); legacy.removeValue(forKey: "notifyUploads")
+            try JSONSerialization.data(withJSONObject: legacy).write(to: state)
             let model = Model(stateURL: state)
             guard model.settings.uploads[0].status == "paused", model.settings.uploads[1].status == "uncertain", model.settings.uploads[0].size == 5_368_709_123 else { throw AppFailure(message: "Unsafe queue recovery") }
+            guard model.settings.origin == "https://existing.example", model.settings.owner == "existing-owner", model.settings.folder == "existing-folder", model.settings.silentFinderUploads, model.settings.notifyUploads else { throw AppFailure(message: "New Finder preferences broke legacy settings") }
+            model.setSilentFinderUploads(false); model.setNotifyUploads(false)
+            let reloaded = Model(stateURL: state)
+            guard !reloaded.settings.silentFinderUploads, !reloaded.settings.notifyUploads, reloaded.settings.uploads.count == 2 else { throw AppFailure(message: "Finder preferences were not persisted") }
+            let backgroundModel = Model(stateURL: directory.appendingPathComponent("background.json"))
+            try AppDelegate.verifySilentFinderLaunch(model: backgroundModel, pasteboard: pasteboard)
             model.save()
         }
         pasteboard.releaseGlobally()
-        print("PASS: Finder Unicode/multiple file URLs, Keychain read/write/delete, secret-free checkpoints, safe queue recovery, 64-bit sizes")
+        print("PASS: silent Finder cold/warm launch, legacy preferences/defaults/persistence, Unicode file URLs, Keychain, secret-free checkpoints, safe queue recovery, 64-bit sizes")
         exit(0)
     } catch { fputs("FAIL: \(error.localizedDescription)\n", stderr); exit(1) }
 }
 if CommandLine.arguments.contains("--integration-test") { integrationSmokeTest() }
 MainActor.assumeIsolated {
     let app = NSApplication.shared
-    app.setActivationPolicy(.regular)
+    app.setActivationPolicy(.accessory)
     let delegate = AppDelegate()
     app.delegate = delegate
     app.run()

@@ -59,7 +59,39 @@ struct Preferences: Codable {
     var folderName = "Uploads"
     var days = 7
     var never = false
+    var silentFinderUploads = true
+    var notifyUploads = true
     var uploads: [Upload] = []
+
+    enum CodingKeys: String, CodingKey {
+        case origin, owner, username, folder, folderName, days, never, uploads
+        case silentFinderUploads, notifyUploads
+    }
+    init(uploads: [Upload] = []) { self.uploads = uploads }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        origin = try values.decodeIfPresent(String.self, forKey: .origin) ?? ""
+        owner = try values.decodeIfPresent(String.self, forKey: .owner) ?? ""
+        username = try values.decodeIfPresent(String.self, forKey: .username) ?? ""
+        folder = try values.decodeIfPresent(String.self, forKey: .folder) ?? ""
+        folderName = try values.decodeIfPresent(String.self, forKey: .folderName) ?? "Uploads"
+        days = try values.decodeIfPresent(Int.self, forKey: .days) ?? 7
+        never = try values.decodeIfPresent(Bool.self, forKey: .never) ?? false
+        uploads = try values.decodeIfPresent([Upload].self, forKey: .uploads) ?? []
+        silentFinderUploads = try values.decodeIfPresent(Bool.self, forKey: .silentFinderUploads) ?? true
+        notifyUploads = try values.decodeIfPresent(Bool.self, forKey: .notifyUploads) ?? true
+    }
+}
+
+struct UploadCompletion: Equatable {
+    let names: [String]
+    let copied: Bool
+    var title: String { names.count == 1 ? "Файл загружен" : "Файлы загружены" }
+    var body: String {
+        let files = names.count == 1 ? names[0] : "Загружено файлов: \(names.count)"
+        let result = copied ? (names.count == 1 ? "Ссылка скопирована" : "Ссылки скопированы") : "Не удалось скопировать ссылку. Откройте ShareFile"
+        return files + "\n" + result
+    }
 }
 
 @MainActor final class Model: ObservableObject {
@@ -82,16 +114,21 @@ struct Preferences: Codable {
     private var suspended = false
     private var pendingFiles: [URL] = []
     private var copiedBatches = Set<String>()
+    private var preparingBatches = Set<String>()
     private let stateURL: URL
-    private let clipboardEnabled: Bool
+    private let writeClipboard: (String) -> Bool
+    var onUploadCompletion: ((UploadCompletion) -> Void)?
     var connected: Bool { !token.isEmpty && !settings.owner.isEmpty }
     var canQuitSafely: Bool { activeID == nil }
     var activeCount: Int { settings.uploads.filter { ["queued", "uploading", "sharing"].contains($0.status) }.count }
     var keyAccount: String { "device:" + settings.origin }
 
-    init(stateURL: URL, clipboardEnabled: Bool = true) {
+    init(stateURL: URL, writeClipboard: @escaping (String) -> Bool = {
+        NSPasteboard.general.clearContents()
+        return NSPasteboard.general.setString($0, forType: .string)
+    }) {
         self.stateURL = stateURL
-        self.clipboardEnabled = clipboardEnabled
+        self.writeClipboard = writeClipboard
         if let data = try? Data(contentsOf: stateURL), let saved = try? JSONDecoder().decode(Preferences.self, from: data) {
             settings = saved
             for index in settings.uploads.indices {
@@ -202,6 +239,8 @@ struct Preferences: Codable {
             catch { notice = error.localizedDescription }
         }
     }
+    func setSilentFinderUploads(_ enabled: Bool) { settings.silentFinderUploads = enabled; save() }
+    func setNotifyUploads(_ enabled: Bool) { settings.notifyUploads = enabled; save() }
     func chooseFiles() {
         let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.canChooseFiles = true; panel.allowsMultipleSelection = true
         panel.prompt = "Загрузить и поделиться"
@@ -212,7 +251,9 @@ struct Preferences: Codable {
         guard !settings.folder.isEmpty else { notice = "Выберите папку назначения"; return }
         guard password.isEmpty || (12...256).contains(password.utf8.count) else { notice = "Исправьте пароль ссылки в настройках"; return }
         let folder = settings.folder, batch = UUID().uuidString, days = settings.days, never = settings.never
+        preparingBatches.insert(batch)
         Task {
+            defer { preparingBatches.remove(batch); finishBatch(batch) }
             for url in urls {
                 if settings.uploads.count >= 100 { notice = "В очереди уже 100 файлов. Удалите завершённые записи"; break }
                 do {
@@ -281,11 +322,16 @@ struct Preferences: Codable {
             guard let link = result["url"] as? String else { throw AppFailure(message: "Сервер не вернул ссылку") }
             let shareID = (result["share"] as? [String: Any])?["id"] as? String ?? ""
             update(id) { $0.status = "done"; $0.link = link; $0.shareID = shareID }
-            let batch = settings.uploads.filter { $0.batch == job.batch }
-            if batch.allSatisfy({ $0.status == "done" && !$0.link.isEmpty }) && !copiedBatches.contains(job.batch) {
-                copy(batch.map(\.link).joined(separator: "\n")); copiedBatches.insert(job.batch)
-            }
+            finishBatch(job.batch)
         } catch { update(id) { $0.status = "uncertain"; $0.message = error.localizedDescription + ". Сервер мог создать ссылку; проверьте Web UI перед повтором." } }
+    }
+    private func finishBatch(_ id: String) {
+        guard !preparingBatches.contains(id), !copiedBatches.contains(id) else { return }
+        let batch = settings.uploads.filter { $0.batch == id }
+        guard !batch.isEmpty, batch.allSatisfy({ $0.status == "done" && !$0.link.isEmpty }) else { return }
+        let copied = copy(batch.map(\.link).joined(separator: "\n"))
+        copiedBatches.insert(id)
+        if settings.notifyUploads { onUploadCompletion?(UploadCompletion(names: batch.map(\.name), copied: copied)) }
     }
     func remove(_ id: String) {
         guard let job = settings.uploads.first(where: { $0.id == id }), activeID != id else { notice = "Сначала приостановите загрузку"; return }
@@ -303,7 +349,12 @@ struct Preferences: Codable {
         busy = true
         Task { defer { busy = false; activeCall = nil; pump() }; await makeLink(id) }
     }
-    func copy(_ text: String) { guard !text.isEmpty && clipboardEnabled else { return }; NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string); notice = "Ссылки скопированы в буфер обмена" }
+    @discardableResult func copy(_ text: String) -> Bool {
+        guard !text.isEmpty else { return false }
+        let copied = writeClipboard(text)
+        notice = copied ? "Ссылки скопированы в буфер обмена" : "Не удалось скопировать ссылки. Попробуйте ещё раз"
+        return copied
+    }
     func openWeb() { if let url = URL(string: settings.origin) { NSWorkspace.shared.open(url) } }
     func browseFolders(_ parent: String = "", name: String = "Доступные папки", back: Bool = false) {
         Task {

@@ -212,7 +212,9 @@ Uploads use `POST /api/v1/uploads` to create a session, `HEAD` to retrieve the d
 
 ## macOS client
 
-The native SwiftUI/AppKit client provides browser-assisted connection, a Keychain token, a resumable upload queue, and a Finder Service. It requires macOS 13 or later. The current package uses ad-hoc signing; Windows and Linux desktop clients are planned separately.
+The native SwiftUI/AppKit client provides browser-assisted connection, a Keychain token, a resumable upload queue, and a Finder Service. Finder uploads run in the background by default, copy the completed sharing links, and send one completion notification per selection. Settings include separate switches for silent Finder uploads and completion notifications, both enabled by default. macOS asks for notification permission on the first completion; uploads and clipboard copying continue if permission is denied. Open the window or settings through the ShareFile menu bar icon. Initial connection setup still opens a window when needed.
+
+It requires macOS 13 or later. The current package uses ad-hoc signing; Windows and Linux desktop clients are planned separately.
 
 ```sh
 make macos-build

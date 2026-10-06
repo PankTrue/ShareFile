@@ -18,7 +18,7 @@ for ARCH in arm64 x86_64; do
     xcrun swiftc -swift-version 5 -O -target "$ARCH-apple-macosx13.0" \
         -module-cache-path "$BUILD_DIR/module-cache" \
         "$MAC_DIR"/Sources/*.swift -o "$STAGE_DIR/ui-$ARCH" \
-        -framework AppKit -framework SwiftUI -framework Security
+        -framework AppKit -framework SwiftUI -framework Security -framework UserNotifications
 done
 xcrun lipo -create "$STAGE_DIR/core-arm64" "$STAGE_DIR/core-x86_64" -output "$APP_DIR/Contents/MacOS/sharefile-client"
 xcrun lipo -create "$STAGE_DIR/ui-arm64" "$STAGE_DIR/ui-x86_64" -output "$APP_DIR/Contents/MacOS/ShareFile"

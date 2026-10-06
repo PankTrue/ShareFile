@@ -186,6 +186,15 @@ struct RootView: View {
                     Button("Сохранить настройки") { model.saveOptions() }.disabled(!model.connected)
                 }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
             }
+            GroupBox {
+                VStack(alignment: .leading, spacing: 13) {
+                    Text("Finder и уведомления").font(.system(size: 16, weight: .semibold))
+                    Toggle("Загружать из Finder без открытия окна", isOn: Binding(get: { model.settings.silentFinderUploads }, set: { model.setSilentFinderUploads($0) }))
+                    Text("Файлы загружаются в фоне, ссылки копируются в буфер обмена. Окно можно открыть из меню ShareFile в строке меню.").font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Toggle("Уведомлять о загрузке и копировании ссылки", isOn: Binding(get: { model.settings.notifyUploads }, set: { model.setNotifyUploads($0) }))
+                    Text("При первом уведомлении macOS запросит разрешение. Оба переключателя сохраняются сразу.").font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
     private var folderPicker: some View {

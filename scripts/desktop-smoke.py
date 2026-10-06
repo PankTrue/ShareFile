@@ -169,7 +169,7 @@ def main():
             revoked = helper("session", success=False)
             assert "Подключ" in revoked and token not in revoked
             stop()
-            print("PASS: browser device approval, real TCP interruption + backend restart + idempotent resume, SHA-256, Unicode/empty files, public/protected links, native Swift queue/process bridge, secret-free native persistence, device revocation")
+            print("PASS: browser device approval, real TCP interruption + backend restart + idempotent resume, SHA-256, Unicode/empty files, public/protected links, native Swift queue/process bridge, batch clipboard/completion notification ordering, notification toggle/clipboard failure, secret-free native persistence, device revocation")
         finally:
             if process is not None:
                 stop()
