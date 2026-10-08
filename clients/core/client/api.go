@@ -68,7 +68,7 @@ func (requestTimeout) Unwrap() error { return context.DeadlineExceeded }
 func (e *HTTPError) Error() string {
 	switch e.Status {
 	case 401:
-		return "Подключение отозвано или истекло. Подключите Mac заново"
+		return "Подключение отозвано или истекло. Подключите устройство заново"
 	case 403:
 		return "Недостаточно прав для этой операции"
 	case 404:
@@ -305,4 +305,11 @@ func (c *Client) Share(ctx context.Context, id string, opts ShareOptions) (Link,
 		}
 	}
 	return out, err
+}
+
+func (c *Client) RevokeShare(ctx context.Context, id string) error {
+	if !identifier.MatchString(id) {
+		return errors.New("Некорректный ID ссылки")
+	}
+	return c.JSON(ctx, "DELETE", "/api/v1/shares/"+id, nil, nil)
 }

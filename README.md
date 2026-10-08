@@ -214,7 +214,7 @@ Uploads use `POST /api/v1/uploads` to create a session, `HEAD` to retrieve the d
 
 The native SwiftUI/AppKit client provides browser-assisted connection, a Keychain token, a resumable upload queue, and a Finder Service. Finder uploads run in the background by default, copy the completed sharing links, and send one completion notification per selection. Settings include separate switches for silent Finder uploads and completion notifications, both enabled by default. macOS asks for notification permission on the first completion; uploads and clipboard copying continue if permission is denied. Open the window or settings through the ShareFile menu bar icon. Initial connection setup still opens a window when needed.
 
-It requires macOS 13 or later. The current package uses ad-hoc signing; the Linux desktop client is planned separately.
+It requires macOS 13 or later. The current package uses ad-hoc signing.
 
 ```sh
 make macos-build
@@ -224,6 +224,18 @@ make desktop-smoke
 ```
 
 The package is `clients/macos/build/ShareFile-macOS-universal.zip`. See [docs/macos.md](docs/macos.md).
+
+## Linux client
+
+The separate GTK 3/Python client reuses the Go transfer core. It provides browser-assisted pairing, Secret Service credentials, a durable resumable queue, drag-and-drop, link settings/revocation, and background actions for Nautilus, Nemo and Dolphin. A file selection produces one clipboard update and one completion notification. Public URLs and credentials are excluded from checkpoints. Closing the window keeps the client in the background; relaunch it to view the queue.
+
+Per-user x86_64 and ARM64 packages include the static transfer core. Install Python 3.10+, PyGObject/GTK 3 and libsecret, extract the package and run `python3 install.py`. See [docs/linux.md](docs/linux.md) for dependencies, installation, desktop integration and validation limits.
+
+```sh
+make linux-build
+make linux-check
+make linux-smoke
+```
 
 ## Windows client
 
@@ -245,6 +257,7 @@ These commands require .NET SDK 10. The smoke test also builds the Go backend an
 - [Implementation plan](docs/implementation-plan.md).
 - [Web UI development and transfer behavior](docs/web-ui.md).
 - [Windows client, installation and validation](docs/windows.md).
+- [Linux client, installation and validation](docs/linux.md).
 - [Deployment, KeenDNS, backup and restore](docs/deployment.md).
 - [Validation results and remaining device checks](docs/validation.md).
 

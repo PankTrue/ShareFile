@@ -58,7 +58,7 @@ func Prepare(path, folder string) (Job, error) {
 	}
 	f, err := os.Open(abs)
 	if err != nil {
-		return Job{}, errors.New("Не удалось открыть файл. Проверьте разрешение macOS на доступ")
+		return Job{}, errors.New("Не удалось открыть файл. Проверьте права доступа")
 	}
 	defer f.Close()
 	s, err := f.Stat()

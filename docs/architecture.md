@@ -2,7 +2,7 @@
 
 Дата: 4 октября 2026 года.
 
-Статус: продуктовые решения и технический проект подтверждены пользователем; backend, React Web UI, Go desktop-ядро и macOS-клиент реализованы. Linux/Windows и испытания роутера — следующие отдельные этапы. Старый PostgreSQL-черновик заменён; совместимость его API и миграция данных не требуются. Фактический API описан в [OpenAPI](../api/openapi.json), эксплуатация — в [deployment.md](deployment.md), macOS — в [macos.md](macos.md).
+Статус: продуктовые решения и технический проект подтверждены пользователем; backend, React Web UI, Go desktop-ядро и клиенты macOS/Linux/Windows реализованы. Фактические платформенные и роутерные проверки отмечены в [validation.md](validation.md). Старый PostgreSQL-черновик заменён; совместимость его API и миграция данных не требуются. Фактический API описан в [OpenAPI](../api/openapi.json), эксплуатация — в [deployment.md](deployment.md), клиенты — в [macos.md](macos.md), [linux.md](linux.md) и [windows.md](windows.md).
 
 ## 1. Назначение и окружение
 

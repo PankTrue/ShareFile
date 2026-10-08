@@ -51,3 +51,4 @@ clients/windows/**/bin/
 clients/windows/**/obj/
 clients/windows/**/TestResults/
 clients/windows/build/
+clients/linux/build/

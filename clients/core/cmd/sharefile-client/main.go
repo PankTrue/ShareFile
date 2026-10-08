@@ -20,6 +20,7 @@ type request struct {
 	Name      string              `json:"name"`
 	RequestID string              `json:"request_id"`
 	Secret    string              `json:"secret"`
+	ShareID   string              `json:"share_id"`
 	Parent    string              `json:"parent"`
 	Source    string              `json:"source"`
 	Job       client.Job          `json:"job"`
@@ -33,6 +34,9 @@ type event struct {
 }
 
 func run(ctx context.Context, in request, emit func(event)) (any, error) {
+	if in.Operation == "normalize" {
+		return client.NormalizeOrigin(in.Origin)
+	}
 	if in.Operation == "prepare" {
 		return client.Prepare(in.Source, in.Parent)
 	}
@@ -45,6 +49,8 @@ func run(ctx context.Context, in request, emit func(event)) (any, error) {
 		return c.Me(ctx)
 	case "folders":
 		return c.Folders(ctx, in.Parent)
+	case "folder":
+		return c.Folder(ctx, in.Parent)
 	case "pair_start":
 		return c.StartPairing(ctx, in.Name)
 	case "pair_poll":
@@ -57,6 +63,8 @@ func run(ctx context.Context, in request, emit func(event)) (any, error) {
 		return nil, c.Cancel(ctx, &in.Job)
 	case "share":
 		return c.Share(ctx, in.Job.FileID, in.Options)
+	case "revoke_share":
+		return nil, c.RevokeShare(ctx, in.ShareID)
 	default:
 		return nil, fmt.Errorf("Неизвестная операция")
 	}

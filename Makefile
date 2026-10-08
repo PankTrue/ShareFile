@@ -3,7 +3,7 @@ NPM ?= npm
 PYTHON ?= python3
 DOTNET ?= dotnet
 
-.PHONY: build arm64 router-release fmt check vulnerabilities web-build web-check browser-check desktop-check macos-build macos-check desktop-smoke windows-check windows-compile windows-smoke
+.PHONY: build arm64 router-release fmt check vulnerabilities web-build web-check browser-check desktop-check macos-build macos-check desktop-smoke windows-check windows-compile windows-smoke linux-build linux-check linux-smoke
 
 build:
 	cd backend && CGO_ENABLED=0 $(GO) build -trimpath -ldflags='-s -w' -o bin/sharefile ./cmd/sharefile
@@ -57,3 +57,14 @@ windows-compile:
 
 windows-smoke: build
 	cd clients/windows && SHAREFILE_BACKEND='$(CURDIR)/backend/bin/sharefile' $(DOTNET) test --project tests/ShareFile.Core.Tests/ShareFile.Core.Tests.csproj
+
+linux-build:
+	GO='$(GO)' $(PYTHON) clients/linux/build.py
+
+linux-check: desktop-check
+	$(PYTHON) -m unittest discover -s clients/linux/tests -v
+
+linux-smoke: build
+	mkdir -p clients/linux/build
+	cd clients/core && $(GO) build -trimpath -o ../linux/build/sharefile-client-host ./cmd/sharefile-client
+	SHAREFILE_BACKEND='$(CURDIR)/backend/bin/sharefile' SHAREFILE_HELPER='$(CURDIR)/clients/linux/build/sharefile-client-host' $(PYTHON) -m unittest discover -s clients/linux/tests -p test_backend.py -v
