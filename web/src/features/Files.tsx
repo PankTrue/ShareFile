@@ -110,6 +110,11 @@ export function Files({
             </Button>
           </>
         )}
+        {manager && current.value && (
+          <Button icon="link" onClick={() => setDialog({ kind: 'share', node: current.value! })}>
+            Поделиться папкой
+          </Button>
+        )}
         {!folderID && session.user.admin && (
           <Button variant="primary" icon="plus" onClick={() => setDialog({ kind: 'new' })}>
             Создать общую папку

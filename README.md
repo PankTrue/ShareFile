@@ -199,7 +199,7 @@ Browser and smoke checks use temporary storage and test accounts, without changi
 
 - Administrator-managed users and groups, personal roots and `Uploads` folders, shared folders, and inherited reader/editor/manager permissions.
 - Streaming tus uploads with durable offsets, resumable transfers, and HTTP Range downloads. Default concurrency: two uploads and four downloads; default chunk size: 16 MiB.
-- File and live-folder sharing links with optional passwords and expiration. Revocation, permission loss, and file replacement invalidate affected links.
+- File and live-folder sharing links with optional passwords and expiration. Public folders include nested navigation, photo previews (JPEG, PNG, GIF, WebP, BMP), escaped UTF-8 text previews, and separate download buttons. Text previews show the first 256 KiB; other formats can be downloaded. Revocation, permission loss, and file replacement invalidate affected links.
 - Seven-day trash, restoration, crash recovery, and explicit copy-import from configured directories. The storage directory must be reserved for ShareFile; avoid writing to it through SMB, FTP, or other applications.
 - Browser sessions with Secure/HttpOnly/SameSite cookies and CSRF protection; separately revocable device tokens approved through a browser.
 - Dedicated storage markers, a process lock, bounded logs, and offline backup/restore. Missing or replaced storage causes requests to fail; the server does not create a fallback data directory.

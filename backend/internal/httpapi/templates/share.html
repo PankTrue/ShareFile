@@ -1,0 +1,65 @@
+{{define "folderIcon"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>{{end}}
+{{define "fileIcon"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Zm0 0v6h6M8 13h8M8 17h5"/></svg>{{end}}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{{.Title}} — ShareFile</title>
+  <link rel="stylesheet" href="/share-assets/style.css">
+</head>
+<body>
+  <header class="site-header"><div class="brand"><span class="brand-mark">{{template "folderIcon"}}</span>ShareFile</div><span class="badge">Доступ по ссылке</span></header>
+  <main>
+    {{if .Locked}}
+      <section class="card password-card">
+        <span class="symbol">{{template "folderIcon"}}</span>
+        <h1>Пароль ссылки</h1>
+        <p class="muted">Введите пароль, который вам передал владелец.</p>
+        <form method="post" action="{{.Base}}/unlock">
+          <label>Пароль<input type="password" name="password" required maxlength="256" autocomplete="current-password" autofocus></label>
+          <button class="button primary" type="submit">Открыть</button>
+        </form>
+      </section>
+    {{else}}
+      <nav class="breadcrumbs" aria-label="Путь в общей папке">
+        {{range .Trail}}{{if eq .ID $.Node.ID}}<span aria-current="page">{{.Name}}</span>{{else}}<a href="{{.URL}}">{{.Name}}</a><span aria-hidden="true">/</span>{{end}}{{end}}
+      </nav>
+      <div class="page-heading">
+        <div><p class="eyebrow">{{if eq .Node.Kind "folder"}}ОБЩАЯ ПАПКА{{else}}ПРЕДПРОСМОТР ФАЙЛА{{end}}</p><h1>{{.Title}}</h1><p class="muted">{{if eq .Node.Kind "folder"}}Открывайте вложенные папки, просматривайте фото и текст или скачивайте файлы.{{else}}{{size .Node.Size}}{{end}}</p></div>
+        {{if .DownloadURL}}{{if eq .Node.Kind "file"}}<a class="button primary" href="{{.DownloadURL}}">Скачать файл</a>{{end}}{{end}}
+      </div>
+      {{if .BackURL}}<a class="back-link" href="{{.BackURL}}">← Вернуться в папку</a>{{end}}
+      {{if eq .Node.Kind "folder"}}
+        <section class="card file-list" aria-label="Содержимое папки">
+          <div class="list-heading"><span>Название</span><span>Размер</span></div>
+          {{range .Nodes}}
+            <div class="file-row">
+              <a class="file-name" href="{{$.Base}}/nodes/{{.ID}}{{if eq .Kind "file"}}/view{{end}}">
+                <span class="symbol {{.Kind}}">{{if eq .Kind "folder"}}{{template "folderIcon"}}{{else}}{{template "fileIcon"}}{{end}}</span>
+                <span class="file-label"><strong>{{.Name}}</strong><small>{{if eq .Kind "folder"}}Папка{{else}}Открыть предпросмотр{{end}}</small></span>
+              </a>
+              <span class="file-size">{{if eq .Kind "file"}}{{size .Size}}{{else}}—{{end}}</span>
+              {{if eq .Kind "file"}}<a class="download-link" href="{{$.Base}}/nodes/{{.ID}}" aria-label="Скачать {{.Name}}">Скачать</a>{{else}}<span class="folder-arrow" aria-hidden="true">→</span>{{end}}
+            </div>
+          {{else}}<div class="empty-state">{{template "folderIcon"}}<h2>В этой папке пока нет файлов</h2><p class="muted">Новые файлы появятся здесь, когда владелец добавит их.</p></div>{{end}}
+        </section>
+        {{if or .Previous .Next}}<nav class="pager" aria-label="Страницы папки">{{if .Previous}}<a class="button" href="?limit={{.Limit}}&amp;offset={{.PreviousOffset}}">Назад</a>{{end}}{{if .Next}}<a class="button" href="?limit={{.Limit}}&amp;offset={{.NextOffset}}">Далее</a>{{end}}</nav>{{end}}
+      {{else}}
+        <section class="card preview" aria-label="Предпросмотр файла">
+          {{if eq .Preview.Kind "image"}}
+            <div class="image-preview"><img src="{{.ContentURL}}" alt="{{.Title}}"></div>
+          {{else if eq .Preview.Kind "text"}}
+            {{if .Preview.Truncated}}<p class="preview-notice">Показаны первые 256 КиБ текста. Скачайте файл, чтобы прочитать его полностью.</p>{{end}}
+            {{if .Preview.Text}}<pre class="text-preview">{{.Preview.Text}}</pre>{{else}}<div class="empty-state"><h2>Файл пуст</h2></div>{{end}}
+          {{else}}
+            <div class="empty-state">{{template "fileIcon"}}<h2>Предпросмотр недоступен</h2><p class="muted">{{.Preview.Message}}</p><a class="button primary" href="{{.DownloadURL}}">Скачать файл</a></div>
+          {{end}}
+        </section>
+      {{end}}
+      <p class="page-note">Содержимое доступно только для просмотра и скачивания.</p>
+    {{end}}
+  </main>
+</body>
+</html>

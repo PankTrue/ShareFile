@@ -7,6 +7,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { env } from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -91,7 +92,7 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 50));
     if (i === 99) throw new Error('Backend did not start');
   }
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, channel: env.PLAYWRIGHT_CHANNEL || undefined });
   const adminContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const admin = await adminContext.newPage();
   observe(admin);
@@ -299,6 +300,128 @@ try {
   await admin.getByRole('dialog').getByRole('button', { name: 'Скопировать файл' }).click();
   await visible(admin.getByText('Файл скопирован в хранилище', { exact: true }));
   await admin.screenshot({ path: join(screenshots, 'settings-desktop.png'), fullPage: true });
+  // Share a live folder through the UI; guests can navigate and preview without an account.
+  await user.goto(publicURL + `/#/files/${projects}`);
+  await user.getByRole('button', { name: 'Новая папка', exact: true }).click();
+  await user.getByRole('dialog').getByLabel('Название', { exact: true }).fill('Для друзей');
+  await user.getByRole('dialog').getByRole('button', { name: 'Сохранить' }).click();
+  await user.getByRole('button', { name: 'Для друзей', exact: true }).click();
+  const sharedFolderID = new URL(user.url()).hash.split('/').at(-1);
+  await user.getByRole('button', { name: 'Поделиться папкой', exact: true }).click();
+  await user.getByRole('dialog').getByLabel('Пароль', { exact: false }).fill(password);
+  await user.getByRole('dialog').getByRole('button', { name: 'Создать ссылку' }).click();
+  await visible(user.getByLabel('Созданная публичная ссылка'));
+  const folderURL = await user.getByLabel('Созданная публичная ссылка').inputValue();
+  await user.getByRole('dialog').getByRole('button', { name: 'Закрыть', exact: true }).click();
+  const guest = await anonymous.newPage();
+  observe(guest);
+  assert.equal((await guest.goto(folderURL)).status(), 401);
+  await guest.getByLabel('Пароль', { exact: true }).fill(password);
+  const unlockResponse = guest.waitForResponse(
+    (response) => response.url() === folderURL + '/unlock',
+  );
+  await guest.getByRole('button', { name: 'Открыть', exact: true }).click();
+  const unlocked = await unlockResponse;
+  assert.equal(
+    unlocked.status(),
+    303,
+    `Unlock failed with Origin=${unlocked.request().headers().origin}`,
+  );
+  await visible(guest.getByRole('heading', { name: 'В этой папке пока нет файлов' }));
+  const session = await (await userContext.request.get(publicURL + '/api/v1/me')).json();
+  const mutationHeaders = { 'X-CSRF-Token': session.csrf_token };
+  const folderResponse = await userContext.request.post(publicURL + '/api/v1/folders', {
+    data: { parent_id: sharedFolderID, name: 'Фото и текст' },
+    headers: mutationHeaders,
+  });
+  assert.equal(folderResponse.status(), 201);
+  const nestedFolder = await folderResponse.json();
+  async function uploadFixture(name, data) {
+    const created = await userContext.request.post(publicURL + '/api/v1/uploads', {
+      headers: {
+        ...mutationHeaders,
+        'Tus-Resumable': '1.0.0',
+        'Upload-Length': String(data.length),
+        'Upload-Metadata': `filename ${Buffer.from(name).toString('base64')},folder_id ${Buffer.from(nestedFolder.id).toString('base64')}`,
+      },
+    });
+    assert.equal(created.status(), 201);
+    const accepted = await userContext.request.patch(created.headers().location, {
+      data,
+      headers: {
+        ...mutationHeaders,
+        'Tus-Resumable': '1.0.0',
+        'Content-Type': 'application/offset+octet-stream',
+        'Upload-Offset': '0',
+      },
+    });
+    assert.equal(accepted.status(), 204);
+    return created.headers()['sharefile-file-id'];
+  }
+  const note =
+    '# Заметки к поездке\n\nПривет, друзья!\n\n<script>window.__previewExecuted = true</script>\n';
+  const noteID = await uploadFixture('заметки.html', Buffer.from(note));
+  const imageData = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const photoID = await uploadFixture('фото.png', imageData);
+  await uploadFixture('архив.bin', Buffer.from([0, 1, 2, 3, 4]));
+  await guest.reload();
+  await guest.getByRole('link', { name: 'Фото и текст', exact: false }).click();
+  await visible(guest.getByRole('heading', { name: 'Фото и текст', exact: true }));
+  assert.equal(
+    await guest
+      .getByRole('navigation', { name: 'Путь в общей папке' })
+      .getByText('alice', { exact: true })
+      .count(),
+    0,
+  );
+  await guest.screenshot({ path: join(screenshots, 'public-folder-desktop.png'), fullPage: true });
+  await guest.getByRole('link', { name: 'заметки.html Открыть предпросмотр', exact: true }).click();
+  assert.equal(await guest.locator('.text-preview').textContent(), note);
+  assert.equal(await guest.evaluate(() => window.__previewExecuted), undefined);
+  await guest.screenshot({ path: join(screenshots, 'public-text-preview.png'), fullPage: true });
+  const noteDownload = await anonymous.request.get(folderURL + `/nodes/${noteID}`);
+  assert.equal(await noteDownload.text(), note);
+  assert.match(noteDownload.headers()['content-disposition'], /^attachment/);
+  await guest.getByRole('link', { name: 'Вернуться в папку', exact: false }).click();
+  await guest.getByRole('link', { name: 'фото.png Открыть предпросмотр', exact: true }).click();
+  await guest.waitForFunction(() => {
+    const img = document.querySelector('.image-preview img');
+    return img?.complete && img.naturalWidth > 0;
+  });
+  const imagePreviewURL = folderURL + `/nodes/${photoID}/preview`;
+  const imagePreview = await anonymous.request.get(imagePreviewURL);
+  assert.equal(imagePreview.headers()['content-type'], 'image/png');
+  assert.deepEqual(await imagePreview.body(), imageData);
+  await guest.screenshot({ path: join(screenshots, 'public-photo-preview.png'), fullPage: true });
+  await guest.getByRole('link', { name: 'Вернуться в папку', exact: false }).click();
+  await guest.getByRole('link', { name: 'архив.bin Открыть предпросмотр', exact: true }).click();
+  await visible(guest.getByRole('heading', { name: 'Предпросмотр недоступен' }));
+  await guest.getByRole('link', { name: 'Вернуться в папку', exact: false }).click();
+  await guest.setViewportSize({ width: 390, height: 844 });
+  assert.equal(
+    await guest.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    true,
+  );
+  await guest.screenshot({ path: join(screenshots, 'public-folder-mobile.png'), fullPage: true });
+  await guest.getByRole('link', { name: 'заметки.html Открыть предпросмотр', exact: true }).click();
+  assert.equal(
+    await guest.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    true,
+  );
+  await guest.screenshot({ path: join(screenshots, 'public-text-mobile.png'), fullPage: true });
+  const shareRecords = await (
+    await userContext.request.get(publicURL + `/api/v1/shares?node_id=${sharedFolderID}`)
+  ).json();
+  const revoked = await userContext.request.delete(
+    publicURL + `/api/v1/shares/${shareRecords[0].id}`,
+    { headers: mutationHeaders },
+  );
+  assert.equal(revoked.status(), 204);
+  assert.equal((await anonymous.request.get(imagePreviewURL)).status(), 404);
+  assert.equal((await guest.reload()).status(), 404);
   // Responsive layout and horizontal overflow, including real loaded rows.
   await user.goto(publicURL + `/#/files/${projects}`);
   await visible(user.getByRole('link', { name: 'Документ.txt', exact: true }));
@@ -331,7 +454,7 @@ try {
   assert.equal((await publicAdmin.request.get(publicURL + '/api/v1/admin/users')).status(), 404);
   assert.deepEqual(errors, [], 'Browser errors/CSP violations');
   console.log(
-    'Browser acceptance passed: auth, private admin, users/groups/ACL, reader/manager UI, chunked upload and SHA-256, sharing, rename/move/replace/revoke/trash/restore, real lost-response upload resume after reload with SHA-256, device pairing/revocation, settings/import, mobile layout, logout.',
+    'Browser acceptance passed: auth, private admin, users/groups/ACL, reader/manager UI, chunked upload and SHA-256, sharing, rename/move/replace/revoke/trash/restore, real lost-response upload resume after reload with SHA-256, device pairing/revocation, settings/import, password-protected live folder, nested navigation, escaped text/photo previews, downloads, preview revocation, mobile layout, logout.',
   );
 } catch (error) {
   if (browser)

@@ -191,7 +191,10 @@ func (a *App) handler(private bool) http.Handler {
 	}))
 	mux.HandleFunc("GET /s/{token}", a.guest)
 	mux.HandleFunc("GET /s/{token}/nodes/{id}", a.guest)
+	mux.HandleFunc("GET /s/{token}/nodes/{id}/view", a.guestView)
+	mux.HandleFunc("GET /s/{token}/nodes/{id}/preview", a.guestPreview)
 	mux.HandleFunc("POST /s/{token}/unlock", a.unlock)
+	mux.HandleFunc("GET /share-assets/style.css", shareStyles)
 	if private {
 		a.adminRoutes(mux)
 	}

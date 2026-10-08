@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"html/template"
 	"net/http"
 	"strings"
 	"time"
@@ -45,10 +44,7 @@ func (a *App) guestCookie(token string) string {
 	return prefix + security.Digest(token)[:16]
 }
 
-var passwordPage = template.Must(template.New("password").Parse(`<!doctype html><html lang="ru"><meta charset="utf-8"><title>ShareFile</title><h1>Пароль ссылки</h1><form method="post" action="{{.}}/unlock"><label>Пароль <input type="password" name="password" required maxlength="256" autocomplete="current-password"></label><button type="submit">Открыть</button></form></html>`))
-var folderPage = template.Must(template.New("folder").Parse(`<!doctype html><html lang="ru"><meta charset="utf-8"><title>{{.Name}} — ShareFile</title><h1>{{.Name}}</h1><ul>{{range .Nodes}}<li><a href="{{$.Base}}/nodes/{{.ID}}">{{.Name}}</a>{{if eq .Kind "file"}} ({{.Size}} байт){{end}}</li>{{end}}</ul>{{if .Previous}}<a href="?offset={{.PreviousOffset}}">Назад</a>{{end}}{{if .Next}} <a href="?offset={{.NextOffset}}">Далее</a>{{end}}</html>`))
-
-func (a *App) guest(w http.ResponseWriter, r *http.Request) {
+func (a *App) guestNode(w http.ResponseWriter, r *http.Request) (shares.Share, metadata.Node, bool) {
 	token := r.PathValue("token")
 	session := ""
 	if c, err := r.Cookie(a.guestCookie(token)); err == nil {
@@ -56,18 +52,24 @@ func (a *App) guest(w http.ResponseWriter, r *http.Request) {
 	}
 	sh, err := a.Shares.Authorize(r.Context(), token, session)
 	if err == shares.ErrPassword {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(401)
-		_ = passwordPage.Execute(w, "/s/"+token)
-		return
+		renderShare(w, http.StatusUnauthorized, sharePageData{Title: "Пароль ссылки", Base: "/s/" + token, Locked: true})
+		return sh, metadata.Node{}, false
 	}
 	if err != nil {
 		fail(w, r, err)
-		return
+		return sh, metadata.Node{}, false
 	}
 	n, err := a.Shares.ResolveNode(r.Context(), sh, r.PathValue("id"))
 	if err != nil {
 		fail(w, r, err)
+		return sh, n, false
+	}
+	return sh, n, true
+}
+
+func (a *App) guest(w http.ResponseWriter, r *http.Request) {
+	sh, n, ok := a.guestNode(w, r)
+	if !ok {
 		return
 	}
 	if n.Kind == "file" {
@@ -95,14 +97,15 @@ func (a *App) guest(w http.ResponseWriter, r *http.Request) {
 		fail(w, r, err)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	data := struct {
-		Name, Base                 string
-		Nodes                      []metadata.Node
-		Previous, Next             bool
-		PreviousOffset, NextOffset int
-	}{n.Name, "/s/" + token, out, offset > 0, len(out) == limit, max(0, offset-limit), offset + limit}
-	_ = folderPage.Execute(w, data)
+	data, err := a.sharePage(r, sh, n)
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	data.Nodes = out
+	data.Previous, data.Next = offset > 0, len(out) == limit
+	data.PreviousOffset, data.NextOffset, data.Limit = max(0, offset-limit), offset+limit, limit
+	renderShare(w, http.StatusOK, data)
 }
 func (a *App) unlock(w http.ResponseWriter, r *http.Request) {
 	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(30 * time.Second))

@@ -1914,7 +1914,7 @@
         "tags": [
           "Public shares"
         ],
-        "description": "No account required. A file returns application/octet-stream with Range support; a folder returns escaped HTML with pagination. Protected links initially return 401 with an HTML password form, then require the share-specific cookie. Descendants are confined to the shared folder; no access to siblings/ancestors. Revoked, expired, disabled-creator or insufficient-creator-permission links return 404.",
+        "description": "No account required. A file returns application/octet-stream with Range support; a folder returns escaped HTML with pagination. Protected links initially return 401 with an HTML password form, then require the share-specific cookie. Descendants are confined to the shared folder; no access to siblings/ancestors. Revoked, expired, disabled-creator or insufficient-creator-permission links return 404. Folder entries open a separate /view page with previews and retain attachment download links.",
         "parameters": [
           {
             "name": "limit",
@@ -1979,6 +1979,177 @@
             }
           }
         ],
+        "security": []
+      }
+    },
+    "/s/{token}/nodes/{id}/view": {
+      "get": {
+        "summary": "Preview a file in a public share",
+        "operationId": "get_s_token_nodes_id_view",
+        "tags": [
+          "Public shares"
+        ],
+        "description": "Same token, password cookie, expiry, revocation and subtree checks as the share. Returns an HTML page with root-confined breadcrumbs and a download link. JPEG, PNG, GIF, WebP and BMP images are embedded from /preview. UTF-8 text (including HTML and SVG source) is escaped, limited to the first 256 KiB and marked when truncated. Binary files, unsupported formats and other text encodings show a download fallback. A folder redirects to its listing. HEAD is supported. 429 when transfer slots are occupied.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Escaped preview page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "303": {
+            "description": "Redirect to the folder listing"
+          },
+          "401": {
+            "description": "Password form",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/s/{token}/nodes/{id}/preview": {
+      "get": {
+        "summary": "Stream a public image preview",
+        "operationId": "get_s_token_nodes_id_preview",
+        "tags": [
+          "Public shares"
+        ],
+        "description": "Same share authorization and subtree checks as /view. Streams only a sniffed JPEG, PNG, GIF, WebP or BMP with explicit image MIME type, inline disposition and nosniff. Other content and folders return 400; active SVG/HTML are never served inline. Supports Range, HEAD and ETag conditional requests. 429 when transfer slots are occupied.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Inline image",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/gif": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/bmp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Requested image range"
+          },
+          "304": {
+            "description": "Conditional request satisfied"
+          },
+          "401": {
+            "description": "Password form",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "Requested range not satisfiable"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
         "security": []
       }
     },
