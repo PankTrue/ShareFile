@@ -1,8 +1,9 @@
 GO ?= go
 NPM ?= npm
 PYTHON ?= python3
+DOTNET ?= dotnet
 
-.PHONY: build arm64 router-release fmt check vulnerabilities web-build web-check browser-check desktop-check macos-build macos-check desktop-smoke
+.PHONY: build arm64 router-release fmt check vulnerabilities web-build web-check browser-check desktop-check macos-build macos-check desktop-smoke windows-check windows-compile windows-smoke
 
 build:
 	cd backend && CGO_ENABLED=0 $(GO) build -trimpath -ldflags='-s -w' -o bin/sharefile ./cmd/sharefile
@@ -47,3 +48,12 @@ macos-check:
 
 desktop-smoke: build
 	python3 scripts/desktop-smoke.py
+
+windows-check:
+	cd clients/windows && $(DOTNET) test --project tests/ShareFile.Core.Tests/ShareFile.Core.Tests.csproj
+
+windows-compile:
+	cd clients/windows && $(DOTNET) build ShareFile.slnx -c Release
+
+windows-smoke: build
+	cd clients/windows && SHAREFILE_BACKEND='$(CURDIR)/backend/bin/sharefile' $(DOTNET) test --project tests/ShareFile.Core.Tests/ShareFile.Core.Tests.csproj

@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ShareFile.Core/ShareFile.Core.csproj" />
+    <Project Path="src/ShareFile.Windows/ShareFile.Windows.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ShareFile.Core.Tests/ShareFile.Core.Tests.csproj" />
+    <Project Path="tests/ShareFile.Windows.Tests/ShareFile.Windows.Tests.csproj" />
+  </Folder>
+</Solution>

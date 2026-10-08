@@ -1,6 +1,6 @@
 # ShareFile
 
-ShareFile is a lightweight file server for a Keenetic Ultra KN-1811 running Entware. It combines a Go backend, SQLite metadata, a React Web UI, and a native macOS client. Files are stored on a dedicated external drive and transferred as streams, with resumable uploads and HTTP Range downloads.
+ShareFile is a lightweight file server for a Keenetic Ultra KN-1811 running Entware. It combines a Go backend, SQLite metadata, a React Web UI, and native macOS and Windows clients. Files are stored on a dedicated external drive and transferred as streams, with resumable uploads and HTTP Range downloads.
 
 The default router deployment provides direct HTTPS access at **https://192.168.1.1:8081**, with automatic startup through Entware and automatic process restart. SSH is used for installation and maintenance; browsing and file transfers work directly over LAN or VPN.
 
@@ -214,7 +214,7 @@ Uploads use `POST /api/v1/uploads` to create a session, `HEAD` to retrieve the d
 
 The native SwiftUI/AppKit client provides browser-assisted connection, a Keychain token, a resumable upload queue, and a Finder Service. Finder uploads run in the background by default, copy the completed sharing links, and send one completion notification per selection. Settings include separate switches for silent Finder uploads and completion notifications, both enabled by default. macOS asks for notification permission on the first completion; uploads and clipboard copying continue if permission is denied. Open the window or settings through the ShareFile menu bar icon. Initial connection setup still opens a window when needed.
 
-It requires macOS 13 or later. The current package uses ad-hoc signing; Windows and Linux desktop clients are planned separately.
+It requires macOS 13 or later. The current package uses ad-hoc signing; the Linux desktop client is planned separately.
 
 ```sh
 make macos-build
@@ -225,11 +225,26 @@ make desktop-smoke
 
 The package is `clients/macos/build/ShareFile-macOS-universal.zip`. See [docs/macos.md](docs/macos.md).
 
+## Windows client
+
+The C#/.NET 10 client uses WPF, CommunityToolkit.Mvvm, and Microsoft dependency injection. It provides browser-assisted pairing, Windows Credential Manager storage, a durable resumable queue, drag-and-drop, a tray icon, and an Explorer **Send to** shortcut. Explorer selections upload in the background, copy all resulting links together, and produce one completion notification. Public URLs and credentials are excluded from queue checkpoints.
+
+Self-contained x64 and ARM64 packages include the runtime. Extract the entire ZIP and run `Install.cmd`; installation is per-user and does not need administrator rights. Windows packages are currently unsigned. On Windows, build with `clients/windows/build.ps1`; the **Windows client** workflow produces the **ShareFile-Windows** Actions artifact.
+
+```sh
+make windows-compile
+make windows-check
+make windows-smoke
+```
+
+These commands require .NET SDK 10. The smoke test also builds the Go backend and uses temporary test storage. Cross-compilation and C# protocol tests have passed on macOS; native Windows execution and Explorer integration still require Windows validation. See [docs/windows.md](docs/windows.md).
+
 ## Project documentation
 
 - [Architecture and agreed requirements](docs/architecture.md).
 - [Implementation plan](docs/implementation-plan.md).
 - [Web UI development and transfer behavior](docs/web-ui.md).
+- [Windows client, installation and validation](docs/windows.md).
 - [Deployment, KeenDNS, backup and restore](docs/deployment.md).
 - [Validation results and remaining device checks](docs/validation.md).
 

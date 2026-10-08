@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><IsTestProject>true</IsTestProject></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/ShareFile.Core/ShareFile.Core.csproj" />
+    <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.1" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

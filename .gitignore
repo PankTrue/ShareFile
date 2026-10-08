@@ -47,3 +47,7 @@ clients/macos/build/
 !clients/core/
 !clients/core/**
 __pycache__/
+clients/windows/**/bin/
+clients/windows/**/obj/
+clients/windows/**/TestResults/
+clients/windows/build/
