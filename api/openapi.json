@@ -3556,6 +3556,212 @@
           }
         }
       }
+    },
+    "/api/v1/nodes/{id}/preview": {
+      "get": {
+        "summary": "Preview a file in the account",
+        "operationId": "get_api_v1_nodes_id_preview",
+        "tags": [
+          "API"
+        ],
+        "description": "Reader required. No public share is needed or created. Content sniffing recognizes passive images, PDF and native audio/video containers. UTF-8 text is returned as JSON up to 256 KiB, with truncated=true for larger files. HTML, SVG and XML are text only; unsupported or non-UTF-8/binary files return kind=unsupported. Uses the shared transfer limit (429). Browser playback depends on installed codecs.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Preview descriptor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "kind",
+                    "media_type",
+                    "text",
+                    "message",
+                    "truncated"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "image",
+                        "text",
+                        "pdf",
+                        "audio",
+                        "video",
+                        "unsupported"
+                      ]
+                    },
+                    "media_type": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/{id}/preview/content": {
+      "get": {
+        "summary": "Stream authenticated preview content",
+        "operationId": "get_api_v1_nodes_id_preview_content",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "image/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "audio/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "video/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "206": {
+            "description": "Requested range",
+            "content": {
+              "image/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "audio/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "video/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "ETag/Last-Modified condition satisfied; no body"
+          },
+          "416": {
+            "description": "Requested range not satisfiable"
+          }
+        },
+        "tags": [
+          "API"
+        ],
+        "description": "Reader required on every request, including HEAD, Range and conditional requests. Streams only content-sniffed passive images, PDF, MP3/WAV/Ogg/MP4/WebM/FLAC/AAC audio and MP4/WebM/Ogg video with inline disposition, nosniff and no-store. HTML/SVG/XML/text and unsupported content return 400. Supports Range, HEAD, ETag and shared transfer slots. PDF may be framed only by this origin in the native browser viewer. No public share is involved.",
+        "parameters": [
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {

@@ -12,6 +12,7 @@ import { useUploads } from '../components/Uploads';
 import { AccessDialog, ShareDialog } from './Sharing';
 import { directoryFromFiles, readDrop } from '../directories';
 import type { DirectorySelection } from '../directories';
+import { FilePreview } from '../components/FilePreview';
 
 type Dialog =
   | { kind: 'new' }
@@ -36,6 +37,7 @@ export function Files({
   const [search, setSearch] = useState<string>();
   const [searchError, setSearchError] = useState('');
   const [dialog, setDialog] = useState<Dialog>();
+  const [preview, setPreview] = useState<{ files: FileNode[]; index: number }>();
   const [uploadError, setUploadError] = useState('');
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -438,12 +440,19 @@ export function Files({
                             {node.name}
                           </button>
                         ) : (
-                          <a
+                          <button
                             className="name-button"
-                            href={`/api/v1/nodes/${idPath(node.id)}/content`}
+                            title={`Открыть предпросмотр ${node.name}`}
+                            onClick={() => {
+                              const files = filtered.filter((item) => item.kind === 'file');
+                              setPreview({
+                                files,
+                                index: files.findIndex((item) => item.id === node.id),
+                              });
+                            }}
                           >
                             {node.name}
-                          </a>
+                          </button>
                         )}
                         {node.kind === 'folder' && <span className="folder-type">Папка</span>}
                       </div>
@@ -581,6 +590,13 @@ export function Files({
           }}
           onSaved={refresh}
           onQueue={onQueue}
+        />
+      )}
+      {preview && (
+        <FilePreview
+          files={preview.files}
+          initialIndex={preview.index}
+          onClose={() => setPreview(undefined)}
         />
       )}
     </>

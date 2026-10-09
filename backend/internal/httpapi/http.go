@@ -146,6 +146,8 @@ func (a *App) handler(private bool) http.Handler {
 		noContent(w, r, a.Files.Delete(r.Context(), u.ID, r.PathValue("id")))
 	}))
 	mux.HandleFunc("GET /api/v1/nodes/{id}/content", a.auth(false, a.download))
+	mux.HandleFunc("GET /api/v1/nodes/{id}/preview", a.auth(false, a.preview))
+	mux.HandleFunc("GET /api/v1/nodes/{id}/preview/content", a.auth(false, a.previewContent))
 	mux.HandleFunc("GET /api/v1/nodes/{id}/archive", a.auth(false, a.downloadArchive))
 	mux.HandleFunc("GET /api/v1/nodes/{id}/grants", a.auth(false, a.namedGrants))
 	mux.HandleFunc("GET /api/v1/nodes/{id}/principals", a.auth(false, a.principals))

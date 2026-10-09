@@ -175,10 +175,10 @@ try {
   await user
     .getByLabel('Выбрать файлы для загрузки')
     .setInputFiles({ name: 'отчёт.txt', mimeType: 'text/plain', buffer: payload });
-  await visible(user.getByRole('link', { name: 'отчёт.txt', exact: true }));
+  await visible(user.getByRole('button', { name: 'отчёт.txt', exact: true }));
   await visible(user.getByText('Сохранён в хранилище', { exact: true }));
   const href = await user
-    .getByRole('link', { name: 'отчёт.txt', exact: true })
+    .getByRole('link', { name: 'Скачать отчёт.txt', exact: true })
     .getAttribute('href');
   const downloaded = await userContext.request.get(publicURL + href);
   assert.equal(
@@ -202,7 +202,7 @@ try {
   await user.getByRole('button', { name: 'Переименовать', exact: true }).click();
   await user.getByRole('dialog').getByLabel('Название', { exact: true }).fill('Документ.txt');
   await user.getByRole('dialog').getByRole('button', { name: 'Сохранить' }).click();
-  await visible(user.getByRole('link', { name: 'Документ.txt', exact: true }));
+  await visible(user.getByRole('button', { name: 'Документ.txt', exact: true }));
   await user.getByLabel('Действия Документ.txt', { exact: true }).click();
   await user.getByRole('button', { name: 'Заменить файлом' }).click();
   await user
@@ -217,7 +217,7 @@ try {
   await visible(user.getByText('Сохранён в хранилище', { exact: true }).nth(1));
   await user.getByRole('button', { name: 'Обновить файлы' }).click();
   const replacement = await user
-    .getByRole('link', { name: 'Документ.txt', exact: true })
+    .getByRole('link', { name: 'Скачать Документ.txt', exact: true })
     .getAttribute('href');
   assert.notEqual(replacement, href);
   assert.equal(
@@ -233,7 +233,7 @@ try {
   await user.locator('.folder-picker').getByRole('button', { name: 'Архив', exact: true }).click();
   await user.getByRole('dialog').getByRole('button', { name: 'Сохранить' }).click();
   await user.getByRole('button', { name: 'Архив', exact: true }).click();
-  await visible(user.getByRole('link', { name: 'Документ.txt', exact: true }));
+  await visible(user.getByRole('button', { name: 'Документ.txt', exact: true }));
   await user.getByLabel('Действия Документ.txt', { exact: true }).click();
   await user.getByRole('button', { name: 'Переместить', exact: true }).click();
   await user
@@ -246,7 +246,7 @@ try {
     .click();
   await user.getByRole('dialog').getByRole('button', { name: 'Сохранить' }).click();
   await user.getByRole('button', { name: 'Проекты', exact: true }).click();
-  await visible(user.getByRole('link', { name: 'Документ.txt', exact: true }));
+  await visible(user.getByRole('button', { name: 'Документ.txt', exact: true }));
   await user.getByLabel('Действия Документ.txt', { exact: true }).click();
   await user.getByRole('button', { name: 'В корзину', exact: true }).click();
   await user.getByRole('dialog').getByRole('button', { name: 'В корзину', exact: true }).click();
@@ -260,7 +260,7 @@ try {
     .click();
   await user.getByRole('dialog').getByRole('button', { name: 'Восстановить', exact: true }).click();
   await user.goto(publicURL + `/#/files/${projects}`);
-  await visible(user.getByRole('link', { name: 'Документ.txt', exact: true }));
+  await visible(user.getByRole('button', { name: 'Документ.txt', exact: true }));
   await user.screenshot({ path: join(screenshots, 'files-desktop.png'), fullPage: true });
   // Lose a real response after the server durably accepts a chunk, then reload and reselect.
   const resumeFile = join(fixture, 'resume.txt');
@@ -285,10 +285,10 @@ try {
   const resumed = user.locator('.upload-job').filter({ hasText: 'resume.txt' });
   await visible(resumed.getByText('Выберите исходный файл, чтобы продолжить', { exact: true }));
   await resumed.locator('input[type=file]').setInputFiles(resumeFile);
-  await visible(user.getByRole('link', { name: 'resume.txt', exact: true }));
+  await visible(user.getByRole('button', { name: 'resume.txt', exact: true }));
   await user.unroute('**/api/v1/uploads/*');
   const resumedHref = await user
-    .getByRole('link', { name: 'resume.txt', exact: true })
+    .getByRole('link', { name: 'Скачать resume.txt', exact: true })
     .getAttribute('href');
   const resumedBody = await (await userContext.request.get(publicURL + resumedHref)).body();
   assert.equal(
@@ -367,16 +367,17 @@ try {
     headers: mutationHeaders,
   });
   assert.equal(emptyFolderResponse.status(), 201);
-  async function uploadFixture(name, data) {
+  async function uploadFixture(name, data, parentID = nestedFolder.id) {
     const created = await userContext.request.post(publicURL + '/api/v1/uploads', {
       headers: {
         ...mutationHeaders,
         'Tus-Resumable': '1.0.0',
         'Upload-Length': String(data.length),
-        'Upload-Metadata': `filename ${Buffer.from(name).toString('base64')},folder_id ${Buffer.from(nestedFolder.id).toString('base64')}`,
+        'Upload-Metadata': `filename ${Buffer.from(name).toString('base64')},folder_id ${Buffer.from(parentID).toString('base64')}`,
       },
     });
     assert.equal(created.status(), 201);
+    if (!data.length) return created.headers()['sharefile-file-id'];
     const accepted = await userContext.request.patch(created.headers().location, {
       data,
       headers: {
@@ -399,6 +400,208 @@ try {
   const photoID = await uploadFixture('фото.png', imageData);
   const binaryData = Buffer.from([0, 1, 2, 3, 4]);
   await uploadFixture('архив.bin', binaryData);
+  // Account previews use the session and Reader permissions, with no public share.
+  const previewFolderResponse = await userContext.request.post(publicURL + '/api/v1/folders', {
+    data: { parent_id: session.user.home_id, name: 'Предпросмотр' },
+    headers: mutationHeaders,
+  });
+  assert.equal(previewFolderResponse.status(), 201);
+  const previewFolder = await previewFolderResponse.json();
+  const privateImageID = await uploadFixture('01-photo.png', imageData, previewFolder.id);
+  await uploadFixture('02-text.html', Buffer.from(note), previewFolder.id);
+  // A valid one-page PDF with a real cross-reference table for the native viewer.
+  const pdfStream = 'BT /F1 24 Tf 60 720 Td (Private PDF preview) Tj ET';
+  const pdfObjects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Length ${pdfStream.length} >>\nstream\n${pdfStream}\nendstream`,
+  ];
+  let pdf = '%PDF-1.4\n';
+  const pdfOffsets = [0];
+  for (const [index, object] of pdfObjects.entries()) {
+    pdfOffsets.push(pdf.length);
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 6\n0000000000 65535 f \n${pdfOffsets
+    .slice(1)
+    .map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`)
+    .join('')}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  const privatePDFID = await uploadFixture('03-document.pdf', Buffer.from(pdf), previewFolder.id);
+  const wav = Buffer.alloc(44 + 16000 * 2);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(wav.length - 8, 4);
+  wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(16000, 24);
+  wav.writeUInt32LE(32000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(wav.length - 44, 40);
+  for (let i = 0; i < 16000; i++)
+    wav.writeInt16LE(Math.round(1000 * Math.sin((i * 2 * Math.PI * 440) / 16000)), 44 + i * 2);
+  await uploadFixture('04-sound.wav', wav, previewFolder.id);
+  const videoPath = join(root, 'web/tests/fixtures/preview.mp4');
+  const privateVideoID = await uploadFixture(
+    '05-video.mp4',
+    await readFile(videoPath),
+    previewFolder.id,
+  );
+  await uploadFixture('06-binary.bin', binaryData, previewFolder.id);
+  await uploadFixture(
+    '07-broken.mp4',
+    Buffer.from('\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00isommp42', 'binary'),
+    previewFolder.id,
+  );
+  await uploadFixture(
+    '08-large.txt',
+    Buffer.from('A'.repeat(256 * 1024) + 'SECRET_SUFFIX'),
+    previewFolder.id,
+  );
+  await uploadFixture('09-photo.png', imageData, previewFolder.id);
+  await uploadFixture('10-empty.txt', Buffer.alloc(0), previewFolder.id);
+  await uploadFixture(
+    '11-unsafe.svg',
+    Buffer.from('<svg onload="window.__previewExecuted=true"></svg>'),
+    previewFolder.id,
+  );
+  for (const id of [privateImageID, privatePDFID, privateVideoID]) {
+    assert.equal(
+      (await anonymous.request.get(`${publicURL}/api/v1/nodes/${id}/preview`)).status(),
+      401,
+    );
+    assert.equal(
+      (await anonymous.request.get(`${publicURL}/api/v1/nodes/${id}/preview/content`)).status(),
+      401,
+    );
+    assert.deepEqual(
+      await (await userContext.request.get(`${publicURL}/api/v1/shares?node_id=${id}`)).json(),
+      [],
+    );
+  }
+  await user.goto(publicURL + `/#/files/${previewFolder.id}`);
+  await user.getByRole('button', { name: '01-photo.png', exact: true }).click();
+  const accountPreview = user.getByRole('dialog');
+  await user.waitForFunction(() => {
+    const img = document.querySelector('.file-preview img');
+    return img?.complete && img.naturalWidth > 0;
+  });
+  assert.equal(
+    await accountPreview.getByRole('button', { name: 'Предыдущий файл' }).isEnabled(),
+    false,
+  );
+  await user.keyboard.press('ArrowRight');
+  await visible(accountPreview.getByRole('heading', { name: '02-text.html', exact: true }));
+  await visible(accountPreview.getByText(note.trim(), { exact: true }));
+  assert.equal(await user.evaluate(() => window.__previewExecuted), undefined);
+  await user.screenshot({ path: join(screenshots, 'account-preview-text.png'), fullPage: true });
+  const pendingPDF = user.waitForResponse((response) =>
+    response.url().endsWith(`/nodes/${privatePDFID}/preview/content`),
+  );
+  await accountPreview.getByRole('button', { name: 'Следующий файл' }).click();
+  const pdfResponse = await pendingPDF;
+  assert.equal(pdfResponse.status(), 200);
+  assert.equal(pdfResponse.headers()['content-type'], 'application/pdf');
+  await user.waitForFunction(
+    () => document.querySelector('.preview-pdf')?.getAttribute('aria-busy') === 'false',
+  );
+  assert.equal(
+    await accountPreview.locator('iframe').getAttribute('src'),
+    `/api/v1/nodes/${privatePDFID}/preview/content`,
+  );
+  const pdfViewer =
+    user.frames().find((frame) => frame.url().startsWith('chrome-extension://')) ??
+    (await user.waitForEvent('framenavigated', {
+      predicate: (frame) => frame.url().startsWith('chrome-extension://'),
+    }));
+  await pdfViewer.locator('viewer-page-selector').waitFor({ state: 'visible' });
+  await pdfViewer.waitForFunction(
+    () =>
+      document
+        .querySelector('pdf-viewer')
+        ?.shadowRoot?.querySelector('viewer-toolbar')
+        ?.shadowRoot?.querySelector('viewer-page-selector')?.docLength === 1,
+  );
+  await user.screenshot({ path: join(screenshots, 'account-preview-pdf.png'), fullPage: false });
+  await accountPreview.getByRole('button', { name: 'Следующий файл' }).click();
+  await user.waitForFunction(() => document.querySelector('.file-preview audio')?.readyState >= 1);
+  assert.equal(
+    await accountPreview
+      .locator('audio')
+      .evaluate((audio) => audio.controls && Math.abs(audio.duration - 1) < 0.1),
+    true,
+  );
+  await accountPreview.locator('audio').evaluate((audio) => audio.play());
+  await user.waitForFunction(() => document.querySelector('.file-preview audio')?.currentTime > 0);
+  const audioStopped = await accountPreview.locator('audio').evaluateHandle((audio) => audio);
+  await accountPreview.getByRole('button', { name: 'Следующий файл' }).click();
+  assert.equal(await audioStopped.evaluate((audio) => audio.paused), true);
+  await audioStopped.dispose();
+  await user.waitForFunction(() => document.querySelector('.file-preview video')?.readyState >= 1);
+  assert.equal(
+    await accountPreview
+      .locator('video')
+      .evaluate((video) => video.controls && video.videoWidth === 320),
+    true,
+  );
+  await accountPreview.locator('video').evaluate((video) => {
+    video.currentTime = 1;
+    return video.play();
+  });
+  await user.waitForFunction(() => document.querySelector('.file-preview video')?.currentTime > 1);
+  const pendingDownload = user.waitForEvent('download');
+  await accountPreview.getByRole('link', { name: 'Скачать файл', exact: true }).click();
+  const videoDownload = await pendingDownload;
+  assert.equal(videoDownload.suggestedFilename(), '05-video.mp4');
+  assert.equal(await videoDownload.failure(), null);
+  const videoStopped = await accountPreview.locator('video').evaluateHandle((video) => video);
+  await user.keyboard.press('Escape');
+  await accountPreview.waitFor({ state: 'hidden' });
+  assert.equal(await videoStopped.evaluate((video) => video.paused), true);
+  await videoStopped.dispose();
+  await user.getByRole('button', { name: '06-binary.bin', exact: true }).click();
+  await visible(accountPreview.getByRole('heading', { name: 'Предпросмотр недоступен' }));
+  await accountPreview.getByRole('button', { name: 'Следующий файл' }).click();
+  await visible(accountPreview.getByRole('alert'));
+  await accountPreview.getByRole('button', { name: 'Следующий файл' }).click();
+  await visible(accountPreview.getByText('Показаны первые 256 КиБ.', { exact: false }));
+  assert.equal(
+    await accountPreview.locator('pre').evaluate((pre) => pre.textContent.length),
+    256 * 1024,
+  );
+  assert.equal(
+    await accountPreview
+      .locator('pre')
+      .evaluate((pre) => pre.textContent.includes('SECRET_SUFFIX')),
+    false,
+  );
+  await accountPreview.getByRole('button', { name: 'Следующий файл' }).click();
+  await user.waitForFunction(() => document.querySelector('.file-preview img')?.naturalWidth > 0);
+  await user.setViewportSize({ width: 390, height: 844 });
+  assert.equal(
+    await accountPreview.evaluate((dialog) => dialog.scrollWidth <= dialog.clientWidth),
+    true,
+  );
+  await user.screenshot({ path: join(screenshots, 'account-preview-mobile.png'), fullPage: false });
+  await user.keyboard.press('ArrowRight');
+  await visible(accountPreview.getByText('Файл пуст.', { exact: true }));
+  await user.keyboard.press('ArrowRight');
+  await visible(accountPreview.getByLabel('Текст 11-unsafe.svg'));
+  assert.equal(await accountPreview.locator('pre svg').count(), 0);
+  assert.equal(await user.evaluate(() => window.__previewExecuted), undefined);
+  assert.equal(
+    await accountPreview.getByRole('button', { name: 'Следующий файл' }).isEnabled(),
+    false,
+  );
+  await user.keyboard.press('ArrowLeft');
+  await visible(accountPreview.getByText('Файл пуст.', { exact: true }));
+  await accountPreview.getByRole('button', { name: 'Закрыть', exact: true }).click();
+  await user.setViewportSize({ width: 1440, height: 960 });
   // Search from personal home must also find nested files in other granted folders.
   await user.goto(publicURL + `/#/files/${session.user.home_id}`);
   const fileSearch = user.getByRole('form', { name: 'Поиск файлов' });
@@ -412,7 +615,7 @@ try {
   await fileSearch.getByLabel('Размер от', { exact: true }).fill(String(imageData.length));
   await fileSearch.getByLabel('Размер до', { exact: true }).fill(String(imageData.length));
   await fileSearch.getByRole('button', { name: 'Найти', exact: true }).click();
-  await visible(user.getByRole('link', { name: 'фото.png', exact: true }));
+  await visible(user.getByRole('button', { name: 'фото.png', exact: true }));
   assert.equal(await user.locator('.file-table tbody tr').count(), 1);
   const location = user.getByRole('button', { name: 'Открыть папку для фото.png', exact: true });
   assert.equal(await location.textContent(), 'Проекты / Для друзей / Фото и текст');
@@ -474,7 +677,7 @@ try {
     true,
   );
   await fileSearch.getByRole('button', { name: 'Сбросить поиск' }).click();
-  await visible(user.getByRole('link', { name: 'фото.png', exact: true }));
+  await visible(user.getByRole('button', { name: 'фото.png', exact: true }));
   await user.goto(publicURL + `/#/files/${sharedFolderID}`);
   const nestedArchive = {
     'Фото и текст/': '',
@@ -626,7 +829,7 @@ try {
     .click();
   // Responsive layout and horizontal overflow, including real loaded rows.
   await user.goto(publicURL + `/#/files/${projects}`);
-  await visible(user.getByRole('link', { name: 'Документ.txt', exact: true }));
+  await visible(user.getByRole('button', { name: 'Документ.txt', exact: true }));
   await user.setViewportSize({ width: 390, height: 844 });
   await user.waitForFunction(
     () => document.querySelector('.sidebar').getBoundingClientRect().right <= 1,
@@ -645,6 +848,16 @@ try {
   );
   await user.getByRole('button', { name: 'Выйти', exact: true }).click();
   await visible(user.getByRole('heading', { name: 'Войти в ShareFile' }));
+  assert.equal(
+    (await userContext.request.get(`${publicURL}/api/v1/nodes/${privateImageID}/preview`)).status(),
+    401,
+  );
+  assert.equal(
+    (
+      await userContext.request.get(`${publicURL}/api/v1/nodes/${privateImageID}/preview/content`)
+    ).status(),
+    401,
+  );
   const publicAdmin = await browser.newContext();
   const publicAdminPage = await publicAdmin.newPage();
   observe(publicAdminPage);
@@ -656,7 +869,7 @@ try {
   assert.equal((await publicAdmin.request.get(publicURL + '/api/v1/admin/users')).status(), 404);
   assert.deepEqual(errors, [], 'Browser errors/CSP violations');
   console.log(
-    'Browser acceptance passed: auth, private admin, users/groups/ACL, reader/manager UI, chunked upload and SHA-256, sharing, rename/move/replace/revoke/trash/restore, lost-response resume, device pairing/revocation, settings/import, password-protected live folder, previews, global Unicode search with combined filters, safe folder paths, search pagination beyond 100 results, streaming ZIP downloads with nested and empty folders, real directory drag/drop with empty folders and duplicate basenames, one folder link, directory picker, mobile layout, logout.',
+    'Browser acceptance passed: auth, private admin, users/groups/ACL, reader/manager UI, chunked upload and SHA-256, sharing, rename/move/replace/revoke/trash/restore, lost-response resume, device pairing/revocation, settings/import, password-protected live folder, public previews, authenticated gallery without shares, escaped and truncated text, native PDF rendering, audio/video playback and seeking, player cleanup, unsupported/failed media fallback, global Unicode search with combined filters, safe folder paths, search pagination beyond 100 results, streaming ZIP downloads with nested and empty folders, real directory drag/drop with empty folders and duplicate basenames, one folder link, directory picker, mobile layout, logout.',
   );
 } catch (error) {
   if (browser)
