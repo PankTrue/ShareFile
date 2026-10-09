@@ -3,7 +3,8 @@ import { api, APIError, errorMessage, idPath } from '../api';
 import { useResource, useTask } from '../hooks';
 import { useApp } from '../context';
 import { bytes, date, roles, validName } from '../utils';
-import type { FileNode } from '../types';
+import type { FileNode, SearchNode, SearchResult } from '../types';
+import { emptySearch, searchParams } from '../search';
 import { Button, Confirm, ErrorBox, IconButton, Modal, PageTitle, State } from '../components/UI';
 import { Icon } from '../components/Icon';
 import { FolderPicker, Pager } from '../components/FolderPicker';
@@ -31,15 +32,26 @@ export function Files({
   const { session } = useApp();
   const uploads = useUploads();
   const [offset, setOffset] = useState(0);
-  const [query, setQuery] = useState('');
+  const [filters, setFilters] = useState(emptySearch);
+  const [search, setSearch] = useState<string>();
+  const [searchError, setSearchError] = useState('');
   const [dialog, setDialog] = useState<Dialog>();
   const [uploadError, setUploadError] = useState('');
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const directoryInput = useRef<HTMLInputElement>(null);
   const rows = useResource<FileNode[]>(
-    `/api/v1/folders?parent_id=${idPath(folderID)}&limit=100&offset=${offset}&refresh=${uploadRevision}`,
+    search === undefined
+      ? `/api/v1/folders?parent_id=${idPath(folderID)}&limit=100&offset=${offset}&refresh=${uploadRevision}`
+      : null,
   );
+  const results = useResource<SearchResult>(
+    search !== undefined
+      ? `/api/v1/search?${search}&limit=100&offset=${offset}&refresh=${uploadRevision}`
+      : null,
+  );
+  const searching = search !== undefined;
+  const resource = searching ? results : rows;
   const current = useResource<FileNode>(folderID ? `/api/v1/nodes/${idPath(folderID)}` : null);
   const [trail, setTrail] = useState<FileNode[]>([]);
   const editor = folderID && (current.value?.effective_role ?? 0) >= 2;
@@ -72,7 +84,9 @@ export function Files({
   }, [folderID]);
   function go(id: string) {
     setOffset(0);
-    setQuery('');
+    setSearch(undefined);
+    setFilters(emptySearch);
+    setSearchError('');
     onFolder(id);
   }
   async function add(files: File[]) {
@@ -93,11 +107,13 @@ export function Files({
     onQueue();
     await uploads.addDirectory(selection, folderID, current.value.name);
   }
-  const filtered = (rows.value ?? []).filter(
-    (node) =>
-      (!spaces || node.id !== session.user.home_id) &&
-      node.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
-  );
+  const filtered = searching
+    ? (results.value?.items ?? [])
+    : (rows.value ?? []).filter((node) => !spaces || node.id !== session.user.home_id);
+  function refresh() {
+    resource.refresh();
+    current.refresh();
+  }
   return (
     <>
       <PageTitle
@@ -227,55 +243,166 @@ export function Files({
                 onClick={() => setDialog({ kind: 'share', node: current.value! })}
               />
             )}
-            <IconButton
-              icon="refresh"
-              label="Обновить файлы"
-              onClick={() => {
-                rows.refresh();
-                current.refresh();
-              }}
-            />
+            <IconButton icon="refresh" label="Обновить файлы" onClick={refresh} />
           </div>
         </div>
         <div className="file-subtoolbar">
           <span className="muted">
-            {rows.loading ? 'Загружаем содержимое' : `${filtered.length} на странице`}
+            {resource.loading ? 'Загружаем содержимое' : `${filtered.length} на странице`}
             {current.value && (
               <span className="role-label">{roles[current.value.effective_role ?? 0]}</span>
             )}
           </span>
-          <label className="search-input">
-            <Icon name="search" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Найти на странице"
-              aria-label="Фильтр файлов на странице"
-            />
-          </label>
         </div>
+        <form
+          className="file-search"
+          aria-label="Поиск файлов"
+          onSubmit={(event) => {
+            event.preventDefault();
+            try {
+              const params = searchParams(filters);
+              setSearchError('');
+              setOffset(0);
+              setSearch(params);
+              results.refresh();
+            } catch (error) {
+              setSearchError(errorMessage(error));
+            }
+          }}
+        >
+          <div className="file-search-heading">
+            <label className="search-input">
+              <Icon name="search" />
+              <input
+                value={filters.query}
+                onChange={(e) => setFilters({ ...filters, query: e.target.value })}
+                placeholder="Найти во всех папках"
+                aria-label="Поиск по всем доступным папкам"
+              />
+            </label>
+            <Button type="submit" icon="search">
+              Найти
+            </Button>
+            {searching && (
+              <Button
+                onClick={() => {
+                  setSearch(undefined);
+                  setFilters(emptySearch);
+                  setSearchError('');
+                  setOffset(0);
+                }}
+              >
+                Сбросить поиск
+              </Button>
+            )}
+          </div>
+          <details className="search-filters">
+            <summary>Фильтры по типу, дате и размеру</summary>
+            <div className="search-filter-fields">
+              <label>
+                Тип
+                <select
+                  aria-label="Тип"
+                  value={filters.type}
+                  onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+                >
+                  <option value="">Все файлы и папки</option>
+                  <option value="file">Все файлы</option>
+                  <option value="folder">Папки</option>
+                  <option value="image">Изображения</option>
+                  <option value="document">Документы и текст</option>
+                  <option value="audio">Аудио</option>
+                  <option value="video">Видео</option>
+                  <option value="archive">Архивы</option>
+                  <option value="other">Другие файлы</option>
+                </select>
+              </label>
+              <label>
+                Добавлено с
+                <input
+                  type="date"
+                  min="1970-01-01"
+                  value={filters.after}
+                  onChange={(e) => setFilters({ ...filters, after: e.target.value })}
+                />
+              </label>
+              <label>
+                Добавлено по
+                <input
+                  type="date"
+                  min="1970-01-01"
+                  value={filters.before}
+                  onChange={(e) => setFilters({ ...filters, before: e.target.value })}
+                />
+              </label>
+              <label>
+                Размер от
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={filters.minSize}
+                  onChange={(e) => setFilters({ ...filters, minSize: e.target.value })}
+                />
+              </label>
+              <label>
+                Размер до
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={filters.maxSize}
+                  onChange={(e) => setFilters({ ...filters, maxSize: e.target.value })}
+                />
+              </label>
+              <label>
+                Единица размера
+                <select
+                  aria-label="Единица размера"
+                  value={filters.sizeUnit}
+                  onChange={(e) => setFilters({ ...filters, sizeUnit: e.target.value })}
+                >
+                  <option value="1">Б</option>
+                  <option value="1024">КБ</option>
+                  <option value="1048576">МБ</option>
+                  <option value="1073741824">ГБ</option>
+                </select>
+              </label>
+            </div>
+            <p className="hint">
+              Тип файла определяется по расширению. Размер применяется только к файлам, даты
+              включают выбранные дни.
+            </p>
+          </details>
+          <ErrorBox message={searchError} />
+          {searching && (
+            <p className="search-scope" role="status">
+              Результаты по всем доступным папкам
+            </p>
+          )}
+        </form>
         <State
-          loading={rows.loading}
-          error={rows.error}
-          retry={rows.refresh}
+          loading={resource.loading}
+          error={resource.error}
+          retry={resource.refresh}
           empty={!filtered.length}
-          title={query ? 'Ничего не найдено' : 'Здесь пока пусто'}
+          title={searching ? 'Ничего не найдено' : 'Здесь пока пусто'}
           description={
-            query
-              ? 'Измените фильтр или откройте другую страницу.'
+            searching
+              ? 'Измените запрос или фильтры и повторите поиск.'
               : editor
                 ? 'Загрузите первые файлы или создайте папку.'
                 : 'Здесь появятся доступные вам файлы и папки.'
           }
           action={
-            editor && !query ? (
+            editor && !searching ? (
               <Button variant="primary" icon="upload" onClick={() => input.current?.click()}>
                 Выбрать файлы
               </Button>
             ) : undefined
           }
         />
-        {!rows.loading && !rows.error && filtered.length > 0 && (
+        {!resource.loading && !resource.error && filtered.length > 0 && (
           <div className="table-scroll">
             <table className="file-table">
               <thead>
@@ -320,6 +447,28 @@ export function Files({
                         )}
                         {node.kind === 'folder' && <span className="folder-type">Папка</span>}
                       </div>
+                      {searching &&
+                        (() => {
+                          const path = (node as SearchNode).path;
+                          const parent = path.at(-1);
+                          const label = path
+                            .map((folder) =>
+                              folder.id === session.user.home_id ? 'Мои файлы' : folder.name,
+                            )
+                            .join(' / ');
+                          return parent ? (
+                            <button
+                              className="search-location"
+                              aria-label={`Открыть папку для ${node.name}`}
+                              title={label}
+                              onClick={() => go(parent.id)}
+                            >
+                              {label}
+                            </button>
+                          ) : (
+                            <span className="search-location">Доступная папка</span>
+                          );
+                        })()}
                     </td>
                     <td>{node.kind === 'folder' ? '—' : bytes(node.size)}</td>
                     <td>{date(node.created_at)}</td>
@@ -393,11 +542,9 @@ export function Files({
         )}
         <Pager
           offset={offset}
-          count={rows.value?.length ?? 0}
-          onChange={(value) => {
-            setOffset(value);
-            setQuery('');
-          }}
+          count={searching ? (results.value?.items.length ?? 0) : (rows.value?.length ?? 0)}
+          hasMore={searching ? (results.value?.has_more ?? false) : rows.value?.length === 100}
+          onChange={setOffset}
         />
         {editor && (
           <div className="drop-hint">
@@ -432,10 +579,7 @@ export function Files({
               .querySelectorAll<HTMLDetailsElement>('.action-menu[open]')
               .forEach((menu) => (menu.open = false));
           }}
-          onSaved={() => {
-            rows.refresh();
-            current.refresh();
-          }}
+          onSaved={refresh}
           onQueue={onQueue}
         />
       )}

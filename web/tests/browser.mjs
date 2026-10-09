@@ -399,6 +399,83 @@ try {
   const photoID = await uploadFixture('фото.png', imageData);
   const binaryData = Buffer.from([0, 1, 2, 3, 4]);
   await uploadFixture('архив.bin', binaryData);
+  // Search from personal home must also find nested files in other granted folders.
+  await user.goto(publicURL + `/#/files/${session.user.home_id}`);
+  const fileSearch = user.getByRole('form', { name: 'Поиск файлов' });
+  await fileSearch.getByLabel('Поиск по всем доступным папкам').fill('ФОТО');
+  await fileSearch.locator('summary').click();
+  await fileSearch.getByLabel('Тип', { exact: true }).selectOption('image');
+  const added = new Date().toLocaleDateString('en-CA');
+  await fileSearch.getByLabel('Добавлено с', { exact: true }).fill(added);
+  await fileSearch.getByLabel('Добавлено по', { exact: true }).fill(added);
+  await fileSearch.getByLabel('Единица размера').selectOption('1');
+  await fileSearch.getByLabel('Размер от', { exact: true }).fill(String(imageData.length));
+  await fileSearch.getByLabel('Размер до', { exact: true }).fill(String(imageData.length));
+  await fileSearch.getByRole('button', { name: 'Найти', exact: true }).click();
+  await visible(user.getByRole('link', { name: 'фото.png', exact: true }));
+  assert.equal(await user.locator('.file-table tbody tr').count(), 1);
+  const location = user.getByRole('button', { name: 'Открыть папку для фото.png', exact: true });
+  assert.equal(await location.textContent(), 'Проекты / Для друзей / Фото и текст');
+  await user.screenshot({ path: join(screenshots, 'search-desktop.png'), fullPage: true });
+  await fileSearch.getByLabel('Размер до', { exact: true }).fill('0');
+  await fileSearch.getByRole('button', { name: 'Найти', exact: true }).click();
+  await visible(fileSearch.getByRole('alert'));
+  await fileSearch.getByLabel('Размер от', { exact: true }).fill('0');
+  await fileSearch.getByRole('button', { name: 'Найти', exact: true }).click();
+  await visible(user.getByRole('heading', { name: 'Ничего не найдено' }));
+  await fileSearch.getByLabel('Размер до', { exact: true }).fill(String(imageData.length));
+  await fileSearch.getByRole('button', { name: 'Найти', exact: true }).click();
+  await visible(location);
+  await user.setViewportSize({ width: 390, height: 844 });
+  assert.equal(
+    await user.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    true,
+  );
+  await user.screenshot({ path: join(screenshots, 'search-mobile.png'), fullPage: true });
+  await location.click();
+  await visible(user.getByRole('heading', { name: 'Фото и текст', exact: true }));
+  assert.equal(await fileSearch.getByRole('button', { name: 'Сбросить поиск' }).count(), 0);
+  await user.setViewportSize({ width: 1440, height: 960 });
+  const pagesResponse = await userContext.request.post(publicURL + '/api/v1/folders', {
+    headers: mutationHeaders,
+    data: { parent_id: session.user.home_id, name: 'Поиск страниц' },
+  });
+  assert.equal(pagesResponse.status(), 201);
+  const searchPages = await pagesResponse.json();
+  for (let i = 0; i < 105; i++) {
+    const created = await userContext.request.post(publicURL + '/api/v1/folders', {
+      headers: mutationHeaders,
+      data: {
+        parent_id: searchPages.id,
+        name: `Глобальный результат ${String(i).padStart(3, '0')}`,
+      },
+    });
+    assert.equal(created.status(), 201);
+  }
+  await fileSearch.getByLabel('Поиск по всем доступным папкам').fill('ГЛОБАЛЬНЫЙ РЕЗУЛЬТАТ');
+  await fileSearch.getByRole('button', { name: 'Найти', exact: true }).click();
+  await visible(user.getByRole('button', { name: 'Глобальный результат 000', exact: true }));
+  assert.equal(await user.locator('.file-table tbody tr').count(), 100);
+  await user
+    .locator('.file-card .pager')
+    .getByRole('button', { name: 'Далее', exact: true })
+    .click();
+  await visible(user.getByRole('button', { name: 'Глобальный результат 104', exact: true }));
+  assert.equal(await user.locator('.file-table tbody tr').count(), 5);
+  assert.equal(
+    await fileSearch.getByLabel('Поиск по всем доступным папкам').inputValue(),
+    'ГЛОБАЛЬНЫЙ РЕЗУЛЬТАТ',
+  );
+  assert.equal(
+    await user
+      .locator('.file-card .pager')
+      .getByRole('button', { name: 'Далее', exact: true })
+      .isDisabled(),
+    true,
+  );
+  await fileSearch.getByRole('button', { name: 'Сбросить поиск' }).click();
+  await visible(user.getByRole('link', { name: 'фото.png', exact: true }));
+  await user.goto(publicURL + `/#/files/${sharedFolderID}`);
   const nestedArchive = {
     'Фото и текст/': '',
     'Фото и текст/Пустая/': '',
@@ -579,7 +656,7 @@ try {
   assert.equal((await publicAdmin.request.get(publicURL + '/api/v1/admin/users')).status(), 404);
   assert.deepEqual(errors, [], 'Browser errors/CSP violations');
   console.log(
-    'Browser acceptance passed: auth, private admin, users/groups/ACL, reader/manager UI, chunked upload and SHA-256, sharing, rename/move/replace/revoke/trash/restore, lost-response resume, device pairing/revocation, settings/import, password-protected live folder, previews, streaming ZIP downloads with nested and empty folders, real directory drag/drop with empty folders and duplicate basenames, one folder link, directory picker, mobile layout, logout.',
+    'Browser acceptance passed: auth, private admin, users/groups/ACL, reader/manager UI, chunked upload and SHA-256, sharing, rename/move/replace/revoke/trash/restore, lost-response resume, device pairing/revocation, settings/import, password-protected live folder, previews, global Unicode search with combined filters, safe folder paths, search pagination beyond 100 results, streaming ZIP downloads with nested and empty folders, real directory drag/drop with empty folders and duplicate basenames, one folder link, directory picker, mobile layout, logout.',
   );
 } catch (error) {
   if (browser)

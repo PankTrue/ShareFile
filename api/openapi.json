@@ -3441,6 +3441,121 @@
         },
         "security": []
       }
+    },
+    "/api/v1/search": {
+      "get": {
+        "summary": "Search all accessible folders and files",
+        "operationId": "get_api_v1_search",
+        "tags": [
+          "API"
+        ],
+        "description": "Searches all accessible live nodes, including personal roots, direct user/group grants and descendants with inherited permissions. Administrators see all live nodes. Deleted or inaccessible nodes never participate in pagination. All filters combine with AND; ordering is by name and ID. Results use a metadata read snapshot with effective roles and accessible ancestor breadcrumbs; private ancestor names/IDs are omitted. No file contents are read. Empty query and filters list all accessible nodes. Changes to permissions apply on the next request.",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "description": "Literal case-insensitive substring of the filename, including Unicode/Cyrillic. Trimmed; at most 240 UTF-8 bytes. Empty matches all names."
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "file",
+                "folder",
+                "image",
+                "document",
+                "audio",
+                "video",
+                "archive",
+                "other"
+              ]
+            },
+            "description": "File category determined by filename extension; omitted matches files and folders."
+          },
+          {
+            "name": "created_after",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "Inclusive creation timestamp, Unix seconds."
+          },
+          {
+            "name": "created_before",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "Exclusive creation timestamp, Unix seconds; must be greater than created_after."
+          },
+          {
+            "name": "min_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "Inclusive minimum file size in bytes. Size constraints exclude folders."
+          },
+          {
+            "name": "max_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "Inclusive maximum file size in bytes; must be at least min_size. Size constraints exclude folders."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Filtered result page; has_more is true only when another matching item exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3979,6 +4094,105 @@
           "free_bytes",
           "read_only",
           "current"
+        ],
+        "additionalProperties": false
+      },
+      "SearchNode": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "parent_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "owner_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "folder",
+              "file"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "deleted_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "trash_root": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "effective_role": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3,
+            "readOnly": true,
+            "description": "Present in live node GET/list/create views. Mutations independently enforce current access."
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Accessible parent folders from the highest accessible ancestor to the immediate parent. Empty for roots and directly granted folders whose parent is inaccessible."
+          }
+        },
+        "required": [
+          "id",
+          "owner_id",
+          "name",
+          "kind",
+          "size",
+          "created_at",
+          "path",
+          "effective_role"
+        ],
+        "additionalProperties": false
+      },
+      "SearchResult": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchNode"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
         ],
         "additionalProperties": false
       }

@@ -131,6 +131,7 @@ func (a *App) handler(private bool) http.Handler {
 		noContent(w, r, a.Identity.RevokeDevice(r.Context(), u.ID, r.PathValue("id")))
 	}))
 	mux.HandleFunc("GET /api/v1/folders", a.auth(false, a.listNodes))
+	mux.HandleFunc("GET /api/v1/search", a.auth(false, a.searchNodes))
 	mux.HandleFunc("POST /api/v1/folders", a.auth(false, a.createFolder))
 	mux.HandleFunc("GET /api/v1/nodes/{id}", a.auth(false, func(w http.ResponseWriter, r *http.Request, u identity.Actor) {
 		n, err := a.Files.Node(r.Context(), u.ID, r.PathValue("id"))

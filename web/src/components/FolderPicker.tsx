@@ -8,20 +8,22 @@ import { Icon } from './Icon';
 export function Pager({
   offset,
   count,
+  hasMore = count === 100,
   onChange,
 }: {
   offset: number;
   count: number;
+  hasMore?: boolean;
   onChange: (offset: number) => void;
 }) {
-  if (offset === 0 && count < 100) return null;
+  if (offset === 0 && !hasMore) return null;
   return (
     <div className="pager">
       <span>Страница {offset / 100 + 1}</span>
       <Button disabled={offset === 0} onClick={() => onChange(Math.max(0, offset - 100))}>
         Назад
       </Button>
-      <Button disabled={count < 100} onClick={() => onChange(offset + 100)}>
+      <Button disabled={!hasMore} onClick={() => onChange(offset + 100)}>
         Далее
       </Button>
     </div>

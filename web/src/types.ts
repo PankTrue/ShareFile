@@ -27,6 +27,8 @@ export type Share = {
   revoked: boolean;
   password_protected: boolean;
 };
+export type SearchNode = FileNode & { path: { id: string; name: string }[] };
+export type SearchResult = { items: SearchNode[]; has_more: boolean };
 export type Group = { id: string; name: string };
 export type Grant = {
   principal_type: 'user' | 'group';
