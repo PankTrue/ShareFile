@@ -107,8 +107,13 @@ func folderAccess(ctx context.Context, q metadata.Queries, user, folder string, 
 	return nil
 }
 func (s *Service) CreateFolder(ctx context.Context, user, parent, name string) (metadata.Node, error) {
+	return s.CreateFolderOnce(ctx, user, parent, name, "")
+}
+
+// CreateFolderOnce recovers a lost response without merging into an existing folder by name.
+func (s *Service) CreateFolderOnce(ctx context.Context, user, parent, name, key string) (metadata.Node, error) {
 	n := metadata.Node{ID: security.Token(), ParentID: parent, OwnerID: user, Name: name, Kind: "folder", CreatedAt: time.Now().Unix()}
-	if !metadata.ValidName(name) {
+	if !metadata.ValidName(name) || len(key) > 128 {
 		return n, metadata.ErrInvalid
 	}
 	err := s.Store.Write(ctx, func(tx *sql.Tx) error {
@@ -126,12 +131,39 @@ func (s *Service) CreateFolder(ctx context.Context, user, parent, name string) (
 				return err
 			}
 		}
+		if key != "" {
+			var id, originalParent, originalName string
+			err := tx.QueryRowContext(ctx, "SELECT node_id,parent_id,name FROM folder_requests WHERE user_id=? AND request_key=?", user, key).Scan(&id, &originalParent, &originalName)
+			if err == nil {
+				if originalParent != parent || originalName != name {
+					return metadata.ErrConflict
+				}
+				existing, err := metadata.GetNode(ctx, tx, id)
+				if err != nil {
+					return err
+				}
+				if existing.DeletedAt != nil || existing.ParentID != parent {
+					return metadata.ErrConflict
+				}
+				if err = access.Require(ctx, tx, user, id, access.Editor); err != nil {
+					return err
+				}
+				n = existing
+				return nil
+			}
+			if !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+		}
 		unique, err := metadata.UniqueName(ctx, tx, parent, name, "")
 		if err != nil {
 			return err
 		}
 		n.Name = unique
 		_, err = tx.ExecContext(ctx, "INSERT INTO nodes(id,parent_id,owner_id,name,kind,created_at) VALUES(?,?,?,?,'folder',?)", n.ID, parentValue, user, n.Name, n.CreatedAt)
+		if err == nil && key != "" {
+			_, err = tx.ExecContext(ctx, "INSERT INTO folder_requests(user_id,request_key,parent_id,name,node_id) VALUES(?,?,?,?,?)", user, key, parent, name, n.ID)
+		}
 		return err
 	})
 	return n, err

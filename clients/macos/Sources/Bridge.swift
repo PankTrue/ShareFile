@@ -50,7 +50,7 @@ final class BridgeCall: @unchecked Sendable {
                     let bytes = stdout.fileHandleForReading.availableData
                     if bytes.isEmpty { break }
                     buffer.append(bytes)
-                    if buffer.count > 2_000_000 { self.interrupt(); failure = AppFailure(message: "Слишком большой ответ ядра"); break }
+                    if buffer.count > 16_000_000 { self.interrupt(); failure = AppFailure(message: "Слишком большой ответ ядра"); break }
                     while let newline = buffer.firstIndex(of: 10) {
                         let line = buffer[..<newline]
                         buffer.removeSubrange(...newline)

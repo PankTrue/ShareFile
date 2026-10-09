@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import unicodedata
 
 from .bridge import ClientError
 
@@ -43,6 +44,65 @@ def validate_job(job):
             require_id(job[field])
     if job.get("status") not in STATUSES or type(job.get("never")) is not bool:
         raise ClientError("Неизвестное состояние очереди")
+    if job.get("directory") is not None:
+        validate_directory(job)
+
+
+def directory_checkpoint(directory):
+    # Nested jobs use the same explicit credential-free allowlist as file uploads.
+    return {"folders": [{key: folder[key] for key in ("path", "key", "id")}
+                        for folder in directory["folders"]],
+            "files": [{"path": entry["path"], "complete": entry["complete"],
+                       "job": {key: entry["job"][key] for key in CHECKPOINT}}
+                      for entry in directory["files"]]}
+
+
+def validate_directory(job):
+    directory = directory_checkpoint(job["directory"])
+    if (job["upload"] or not isinstance(directory["folders"], list)
+            or not isinstance(directory["files"], list)
+            or len(directory["folders"]) + len(directory["files"]) > 10000):
+        raise ClientError("Некорректная структура папки в очереди")
+    paths, parents, identities, total = set(), {""}, {job["id"]}, 0
+
+    def path(value):
+        if (not isinstance(value, str) or value in paths or not value or len(value.split("/")) > 128
+                or any(not part or part in (".", "..") or part.strip() != part
+                       or "\\" in part or len(part.encode()) > 240 or any(unicodedata.category(char) == "Cc" for char in part)
+                       for part in value.split("/")) or value.rpartition("/")[0] not in parents):
+            # Parent paths are validated explicitly below without resolving local symlinks.
+            raise ClientError("Некорректный путь в структуре папки")
+        paths.add(value)
+
+    for folder in directory["folders"]:
+        path(folder["path"])
+        require_id(folder["key"])
+        if folder["key"] in identities:
+            raise ClientError("Повторяющийся ключ загрузки папки")
+        identities.add(folder["key"])
+        if folder["id"]:
+            require_id(folder["id"])
+        parents.add(folder["path"])
+    for entry in directory["files"]:
+        path(entry["path"])
+        child = entry["job"]
+        validate_job({**child, "batch": job["batch"], "days": job["days"], "never": job["never"],
+                      "status": "queued", "message": "", "share_id": ""})
+        if (Path(child["source"]) != Path(job["source"]) / entry["path"] or child["id"] in identities
+                or type(entry["complete"]) is not bool or (entry["complete"] and
+                    (not child["file_id"] or child["offset"] != child["size"]))):
+            raise ClientError("Некорректный файл в структуре папки")
+        identities.add(child["id"])
+        total += child["size"]
+    if total != job["size"] or len(json.dumps(directory, ensure_ascii=False).encode()) > 16 << 20:
+        raise ClientError("Некорректный размер структуры папки")
+
+
+def persisted_job(job):
+    output = {key: job[key] for key in JOB_FIELDS}
+    if job.get("directory") is not None:
+        output["directory"] = directory_checkpoint(job["directory"])
+    return output
 
 
 class StateStore:
@@ -54,7 +114,7 @@ class StateStore:
         if not self.path.exists():
             return {"version": 1, "settings": copy.deepcopy(DEFAULTS), "jobs": []}
         try:
-            if self.path.stat().st_size > 4 << 20:
+            if self.path.stat().st_size > 64 << 20:
                 raise ValueError()
             raw = json.loads(self.path.read_text(encoding="utf-8"))
             if raw["version"] != 1 or not isinstance(raw["settings"], dict) or not isinstance(raw["jobs"], list) or len(raw["jobs"]) > 100:
@@ -70,7 +130,7 @@ class StateStore:
                     require_id(settings[key])
             jobs = []
             for raw_job in raw["jobs"]:
-                job = {key: raw_job[key] for key in JOB_FIELDS}
+                job = persisted_job(raw_job)
                 validate_job(job)
                 if job["status"] in ("queued", "uploading", "cancelling"):
                     job["status"] = "paused"
@@ -87,7 +147,10 @@ class StateStore:
     def save(self, state):
         # Explicit allowlist: public capabilities, tokens and passwords never reach disk.
         output = {"version": 1, "settings": {key: state["settings"][key] for key in DEFAULTS},
-                  "jobs": [{key: job[key] for key in JOB_FIELDS} for job in state["jobs"]]}
+                  "jobs": [persisted_job(job) for job in state["jobs"]]}
+        payload = json.dumps(output, ensure_ascii=True)
+        if len(payload.encode()) > 64 << 20:
+            raise ClientError("Очередь слишком большая. Удалите завершённые записи")
         directory = self.path.parent
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(directory, 0o700)
@@ -97,7 +160,7 @@ class StateStore:
                                              prefix=".state-", delete=False) as file:
                 staging = Path(file.name)
                 os.chmod(staging, 0o600)
-                json.dump(output, file, ensure_ascii=True)
+                file.write(payload)
                 file.flush()
                 os.fsync(file.fileno())
             os.replace(staging, self.path)

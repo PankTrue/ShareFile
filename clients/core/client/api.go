@@ -129,6 +129,9 @@ func failure(resp *http.Response) error {
 	return &HTTPError{resp.StatusCode, time.Duration(min(max(seconds, 0), 60)) * time.Second}
 }
 func (c *Client) JSON(ctx context.Context, method, path string, input, output any) error {
+	return c.jsonHeaders(ctx, method, path, input, output, map[string]string{"Content-Type": "application/json"})
+}
+func (c *Client) jsonHeaders(ctx context.Context, method, path string, input, output any, headers map[string]string) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	var body io.Reader
@@ -139,7 +142,7 @@ func (c *Client) JSON(ctx context.Context, method, path string, input, output an
 		}
 		body = bytes.NewReader(b)
 	}
-	resp, err := c.request(ctx, method, path, body, -1, map[string]string{"Content-Type": "application/json"})
+	resp, err := c.request(ctx, method, path, body, -1, headers)
 	if err != nil {
 		return err
 	}

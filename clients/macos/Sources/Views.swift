@@ -81,8 +81,8 @@ struct RootView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Файл на Mac. Ссылка для всех.").font(.system(size: 20, weight: .semibold))
-                        Text("Выберите файлы или перетащите их сюда.\nПосле загрузки ссылки появятся в буфере обмена.").font(.system(size: 13)).foregroundStyle(.secondary).lineSpacing(4)
+                        Text("Файлы и папки. Ссылка для всех.").font(.system(size: 20, weight: .semibold))
+                        Text("Выберите файлы и папки или перетащите их сюда.\nВложенность сохранится, на каждую папку — одна ссылка.").font(.system(size: 13)).foregroundStyle(.secondary).lineSpacing(4)
                     }
                     Spacer()
                     Image(systemName: "externaldrive.badge.wifi").font(.system(size: 45, weight: .light)).foregroundStyle(green.opacity(0.7)).padding(4)
@@ -98,7 +98,7 @@ struct RootView: View {
             }.padding(24).background(Color.white).clipShape(RoundedRectangle(cornerRadius: 12))
             if !model.fileErrors.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack { Text("Не удалось добавить файлы").font(.system(size: 13, weight: .semibold)); Spacer(); Button("Убрать") { model.fileErrors = [] }.buttonStyle(.plain) }
+                    HStack { Text("Не удалось добавить файлы или папки").font(.system(size: 13, weight: .semibold)); Spacer(); Button("Убрать") { model.fileErrors = [] }.buttonStyle(.plain) }
                     ForEach(Array(model.fileErrors.enumerated()), id: \.offset) { _, error in Text(error).font(.system(size: 12)).textSelection(.enabled) }
                 }.padding(16).background(Color.orange.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: 10))
             }
@@ -129,7 +129,7 @@ struct RootView: View {
     private func uploadRow(_ job: Upload) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                Image(systemName: job.status == "done" ? "checkmark.circle.fill" : "doc").font(.system(size: 22, weight: .light)).foregroundStyle(job.status == "done" ? green : Color.secondary)
+                Image(systemName: job.status == "done" ? "checkmark.circle.fill" : job.directory == nil ? "doc" : "folder").font(.system(size: 22, weight: .light)).foregroundStyle(job.status == "done" ? green : Color.secondary)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(job.name).font(.system(size: 13, weight: .medium)).lineLimit(1).help(job.source)
                     Text("\(ByteCountFormatter.string(fromByteCount: job.offset, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: job.size, countStyle: .file)) · \(job.label)").font(.system(size: 11)).foregroundStyle(.secondary)

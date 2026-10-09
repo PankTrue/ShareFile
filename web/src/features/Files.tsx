@@ -9,6 +9,8 @@ import { Icon } from '../components/Icon';
 import { FolderPicker, Pager } from '../components/FolderPicker';
 import { useUploads } from '../components/Uploads';
 import { AccessDialog, ShareDialog } from './Sharing';
+import { directoryFromFiles, readDrop } from '../directories';
+import type { DirectorySelection } from '../directories';
 
 type Dialog =
   | { kind: 'new' }
@@ -34,6 +36,7 @@ export function Files({
   const [uploadError, setUploadError] = useState('');
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const directoryInput = useRef<HTMLInputElement>(null);
   const rows = useResource<FileNode[]>(
     `/api/v1/folders?parent_id=${idPath(folderID)}&limit=100&offset=${offset}&refresh=${uploadRevision}`,
   );
@@ -84,6 +87,12 @@ export function Files({
       setUploadError(errorMessage(e));
     }
   }
+  async function addDirectory(selection: DirectorySelection) {
+    if (!current.value || !editor) return;
+    if (!manager) throw new Error('Для загрузки папки с общей ссылкой нужны права управляющего.');
+    onQueue();
+    await uploads.addDirectory(selection, folderID, current.value.name);
+  }
   const filtered = (rows.value ?? []).filter(
     (node) =>
       (!spaces || node.id !== session.user.home_id) &&
@@ -108,6 +117,11 @@ export function Files({
             <Button variant="primary" icon="upload" onClick={() => input.current?.click()}>
               Загрузить файлы
             </Button>
+            {manager && (
+              <Button icon="folder" onClick={() => directoryInput.current?.click()}>
+                Загрузить папку
+              </Button>
+            )}
           </>
         )}
         {manager && current.value && (
@@ -132,6 +146,24 @@ export function Files({
           e.target.value = '';
         }}
       />
+      <input
+        ref={(node) => {
+          directoryInput.current = node;
+          if (node) node.webkitdirectory = true;
+        }}
+        className="visually-hidden"
+        type="file"
+        multiple
+        aria-label="Выбрать папку для загрузки"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = '';
+          setUploadError('');
+          void (async () => {
+            await addDirectory(directoryFromFiles(files));
+          })().catch((error) => setUploadError(errorMessage(error)));
+        }}
+      />
       <ErrorBox message={uploadError || current.error} />
       <section
         className={`file-card ${dragging ? 'dragging' : ''}`}
@@ -145,13 +177,15 @@ export function Files({
         onDrop={(e) => {
           e.preventDefault();
           setDragging(false);
-          if (
-            Array.from(e.dataTransfer.items).some((item) => item.webkitGetAsEntry?.()?.isDirectory)
-          ) {
-            setUploadError('Выберите отдельные файлы. Загрузка каталогов пока не поддерживается.');
-            return;
-          }
-          void add(Array.from(e.dataTransfer.files));
+          if (!editor) return;
+          setUploadError('');
+          const dropped = readDrop(e.dataTransfer);
+          void dropped
+            .then(async ({ files, directories }) => {
+              for (const directory of directories) await addDirectory(directory);
+              if (files.length) await add(files);
+            })
+            .catch((error) => setUploadError(errorMessage(error)));
         }}
       >
         <div className="file-toolbar">
@@ -362,7 +396,10 @@ export function Files({
         {editor && (
           <div className="drop-hint">
             <Icon name="upload" />
-            <span>Перетащите файлы в эту область · загрузку можно приостановить</span>
+            <span>
+              {manager ? 'Перетащите файлы или папку' : 'Перетащите файлы'} в эту область · загрузку
+              можно приостановить
+            </span>
           </div>
         )}
         {dragging && (
@@ -375,7 +412,7 @@ export function Files({
       <div className="page-note">
         <Icon name="lock" />
         <span>
-          Файлы доступны по вашим правам. Публичный доступ включается отдельно для каждой ссылки.
+          Файлы доступны по вашим правам. При загрузке папки создаётся общая ссылка на 7 дней.
         </span>
       </div>
       {dialog && (

@@ -200,6 +200,7 @@ Browser and smoke checks use temporary storage and test accounts, without changi
 - Web configuration of storage disk/directory, network, TLS paths, transfer limits, import sources, UI and logging, with persisted drafts and safe offline storage copying.
 - Administrator-managed users and groups, personal roots and `Uploads` folders, shared folders, and inherited reader/editor/manager permissions.
 - Streaming tus uploads with durable offsets, resumable transfers, and HTTP Range downloads. Default concurrency: two uploads and four downloads; default chunk size: 16 MiB.
+- Whole-directory uploads from Finder, Windows Explorer, Linux file managers and the browser. Nested paths, duplicate basenames and empty folders are preserved; each directory is one resumable queue item with one public link created after every file completes. All clients offer a folder picker; use browser drag-and-drop to include empty folders. Limit: 10,000 entries and 128 nested path components per directory.
 - File and live-folder sharing links with optional passwords and expiration. Public folders include nested navigation, photo previews (JPEG, PNG, GIF, WebP, BMP), escaped UTF-8 text previews, and separate download buttons. Text previews show the first 256 KiB; other formats can be downloaded. Revocation, permission loss, and file replacement invalidate affected links.
 - Seven-day trash, restoration, crash recovery, and explicit copy-import from configured directories. The storage directory must be reserved for ShareFile; avoid writing to it through SMB, FTP, or other applications.
 - Browser sessions with Secure/HttpOnly/SameSite cookies and CSRF protection; separately revocable device tokens approved through a browser.
@@ -213,7 +214,7 @@ Uploads use `POST /api/v1/uploads` to create a session, `HEAD` to retrieve the d
 
 ## macOS client
 
-The native SwiftUI/AppKit client provides browser-assisted connection, a Keychain token, a resumable upload queue, and a Finder Service. Finder uploads run in the background by default, copy the completed sharing links, and send one completion notification per selection. Settings include separate switches for silent Finder uploads and completion notifications, both enabled by default. macOS asks for notification permission on the first completion; uploads and clipboard copying continue if permission is denied. Open the window or settings through the ShareFile menu bar icon. Initial connection setup still opens a window when needed.
+The native SwiftUI/AppKit client provides browser-assisted connection, a Keychain token, a resumable upload queue, and a Finder Service. Select or drop files and directories; directory uploads preserve empty subfolders and produce one link for the entire tree. Finder uploads run in the background by default, copy the completed sharing links, and send one completion notification per selection. Settings include separate switches for silent Finder uploads and completion notifications, both enabled by default. macOS asks for notification permission on the first completion; uploads and clipboard copying continue if permission is denied. Open the window or settings through the ShareFile menu bar icon. Initial connection setup still opens a window when needed.
 
 It requires macOS 13 or later. The current package uses ad-hoc signing.
 
@@ -228,7 +229,7 @@ The package is `clients/macos/build/ShareFile-macOS-universal.zip`. See [docs/ma
 
 ## Linux client
 
-The separate GTK 3/Python client reuses the Go transfer core. It provides browser-assisted pairing, Secret Service credentials, a durable resumable queue, drag-and-drop, link settings/revocation, and background actions for Nautilus, Nemo and Dolphin. A file selection produces one clipboard update and one completion notification. Public URLs and credentials are excluded from checkpoints. Closing the window keeps the client in the background; relaunch it to view the queue.
+The separate GTK 3/Python client reuses the Go transfer core. It provides browser-assisted pairing, Secret Service credentials, a durable resumable queue, file/folder drag-and-drop and selection, link settings/revocation, and background actions for Nautilus, Nemo and Dolphin. Each uploaded directory preserves its tree and produces one folder link. A selection produces one clipboard update and one completion notification. Public URLs and credentials are excluded from checkpoints. Closing the window keeps the client in the background; relaunch it to view the queue.
 
 Per-user x86_64 and ARM64 packages include the static transfer core. Install Python 3.10+, PyGObject/GTK 3 and libsecret, extract the package and run `python3 install.py`. See [docs/linux.md](docs/linux.md) for dependencies, installation, desktop integration and validation limits.
 
@@ -240,7 +241,7 @@ make linux-smoke
 
 ## Windows client
 
-The C#/.NET 10 client uses WPF, CommunityToolkit.Mvvm, and Microsoft dependency injection. It provides browser-assisted pairing, Windows Credential Manager storage, a durable resumable queue, drag-and-drop, a tray icon, and an Explorer **Send to** shortcut. Explorer selections upload in the background, copy all resulting links together, and produce one completion notification. Public URLs and credentials are excluded from queue checkpoints.
+The C#/.NET 10 client uses WPF, CommunityToolkit.Mvvm, and Microsoft dependency injection. It provides browser-assisted pairing, Windows Credential Manager storage, a durable resumable queue, file/folder drag-and-drop and selection, a tray icon, and an Explorer **Send to** shortcut. A directory preserves empty subfolders and produces one folder link. Explorer selections upload in the background, copy all resulting links together, and produce one completion notification. Public URLs and credentials are excluded from queue checkpoints.
 
 Self-contained x64 and ARM64 packages include the runtime. Extract the entire ZIP and run `Install.cmd`; installation is per-user and does not need administrator rights. Windows packages are currently unsigned. On Windows, build with `clients/windows/build.ps1`; the **Windows client** workflow produces the **ShareFile-Windows** Actions artifact.
 

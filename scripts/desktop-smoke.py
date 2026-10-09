@@ -164,12 +164,62 @@ def main():
             assert len(native_result["links"]) == 2
             assert call_http("GET", urllib.parse.urlsplit(native_result["links"][0]).path)[2] == payload
             assert call_http("GET", urllib.parse.urlsplit(native_result["links"][1]).path)[2] == b""
+            tree = root / "Проект 日本語"
+            for directory in ("a", "b", "пустая/вложенная"):
+                (tree / directory).mkdir(parents=True)
+            (tree / "a/report.txt").write_bytes(payload)
+            (tree / "b/report.txt").write_bytes(b"different basename location")
+            (tree / "zero.txt").touch()
+            tree_job = helper("prepare_directory", source=str(tree), parent=folder["id"])
+            # Commit every folder but deliberately lose their responses/checkpoints.
+            def keyed_folder(parent, name, key):
+                code, _, body = call_http("POST", "/api/v1/folders", {"parent_id": parent, "name": name},
+                    headers={"Authorization": "Bearer " + token, "Idempotency-Key": key})
+                assert code == 201
+                return json.loads(body)["id"]
+            remote_root = keyed_folder(folder["id"], tree.name, tree_job["id"])
+            remote_folders = {".": remote_root}
+            for entry in tree_job["directory"]["folders"]:
+                remote_folders[entry["path"]] = keyed_folder(remote_folders[str(Path(entry["path"]).parent)],
+                    Path(entry["path"]).name, entry["key"])
+            first = tree_job["directory"]["files"][0]
+            first["job"]["folder"] = remote_folders[str(Path(first["path"]).parent)]
+            code, headers, _ = call_http("POST", "/api/v1/uploads", headers={
+                "Authorization": "Bearer " + token, "Tus-Resumable": "1.0.0",
+                "Idempotency-Key": first["job"]["id"], "Upload-Length": str(first["job"]["size"]),
+                "Upload-Metadata": "filename " + base64.b64encode(first["job"]["name"].encode()).decode()
+                    + ",folder_id " + base64.b64encode(first["job"]["folder"].encode()).decode(),
+            })
+            assert code == 201
+            first_path = urllib.parse.urlsplit(headers["location"]).path
+            first_id = headers["sharefile-file-id"]
+            assert call_http("POST", first_path, payload[:70000], headers={
+                "Authorization": "Bearer " + token, "Tus-Resumable": "1.0.0", "Upload-Offset": "0",
+                "X-HTTP-Method-Override": "PATCH", "Content-Type": "application/offset+octet-stream",
+            })[0] == 204
+            stop(); start()
+            tree_result = helper("upload_directory", directory_job=tree_job)
+            assert tree_result["file_id"] == remote_root and tree_result["offset"] == tree_job["size"]
+            assert tree_result["directory"]["files"][0]["job"]["file_id"] == first_id
+            tree_share = helper("share", job={k: v for k, v in tree_result.items() if k != "directory"}, options={"days": 7})
+            tree_path = urllib.parse.urlsplit(tree_share["url"]).path
+            assert call_http("GET", tree_path)[0] == 200
+            for entry in tree_result["directory"]["files"]:
+                assert call_http("GET", tree_path + "/nodes/" + entry["job"]["file_id"])[2] == (tree / entry["path"]).read_bytes()
+            assert len(json.loads(call_http("GET", "/api/v1/shares?node_id=" + remote_root, headers=auth)[2])) == 1
+            # A real native queue item for the whole directory yields one copied link and one notification.
+            native_tree = subprocess.run([str(native_app), "--integration-test"], input=json.dumps({
+                "origin": origin, "token": token, "folder": folder["id"], "files": [str(tree)],
+            }), text=True, capture_output=True, timeout=90, check=True)
+            tree_native = json.loads(native_tree.stdout)
+            assert len(tree_native["links"]) == 1
+            assert call_http("GET", urllib.parse.urlsplit(tree_native["links"][0]).path)[0] == 200
             devices = json.loads(call_http("GET", "/api/v1/devices", headers=auth)[2])
             assert call_http("DELETE", "/api/v1/devices/" + devices[0]["id"], headers=auth)[0] == 204
             revoked = helper("session", success=False)
             assert "Подключ" in revoked and token not in revoked
             stop()
-            print("PASS: browser device approval, real TCP interruption + backend restart + idempotent resume, SHA-256, Unicode/empty files, public/protected links, native Swift queue/process bridge, batch clipboard/completion notification ordering, notification toggle/clipboard failure, secret-free native persistence, device revocation")
+            print("PASS: device approval, interrupted upload/backend restart, SHA-256, folder tree with empty folders and duplicate basenames, lost folder/file creation recovery, one folder link, native Swift folder/file queues, batch clipboard/notification ordering, secret-free persistence, device revocation")
         finally:
             if process is not None:
                 stop()

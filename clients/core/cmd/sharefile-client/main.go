@@ -24,13 +24,14 @@ type request struct {
 	Parent    string              `json:"parent"`
 	Source    string              `json:"source"`
 	Job       client.Job          `json:"job"`
+	Directory client.DirectoryJob `json:"directory_job"`
 	Options   client.ShareOptions `json:"options"`
 }
 type event struct {
-	Type   string      `json:"type"`
-	Result any         `json:"result,omitempty"`
-	Job    *client.Job `json:"job,omitempty"`
-	Error  string      `json:"error,omitempty"`
+	Type   string `json:"type"`
+	Result any    `json:"result,omitempty"`
+	Job    any    `json:"job,omitempty"`
+	Error  string `json:"error,omitempty"`
 }
 
 func run(ctx context.Context, in request, emit func(event)) (any, error) {
@@ -39,6 +40,9 @@ func run(ctx context.Context, in request, emit func(event)) (any, error) {
 	}
 	if in.Operation == "prepare" {
 		return client.Prepare(in.Source, in.Parent)
+	}
+	if in.Operation == "prepare_directory" {
+		return client.PrepareDirectory(in.Source, in.Parent)
 	}
 	c, err := client.New(in.Origin, in.Token)
 	if err != nil {
@@ -59,6 +63,11 @@ func run(ctx context.Context, in request, emit func(event)) (any, error) {
 	case "upload":
 		err := c.Upload(ctx, &in.Job, func(j client.Job) { emit(event{Type: "progress", Job: &j}) })
 		return in.Job, err
+	case "upload_directory":
+		err := c.UploadDirectory(ctx, &in.Directory, func(j client.DirectoryJob) { emit(event{Type: "progress", Job: j}) })
+		return in.Directory, err
+	case "cancel_directory":
+		return nil, c.CancelDirectory(ctx, &in.Directory)
 	case "cancel":
 		return nil, c.Cancel(ctx, &in.Job)
 	case "share":
@@ -80,7 +89,7 @@ func main() {
 		}
 	}
 	var in request
-	decoder := json.NewDecoder(io.LimitReader(os.Stdin, 1<<20))
+	decoder := json.NewDecoder(io.LimitReader(os.Stdin, 16<<20))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&in) != nil {
 		emit(event{Type: "error", Error: "Некорректный запрос клиента"})

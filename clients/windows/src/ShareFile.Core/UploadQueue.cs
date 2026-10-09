@@ -137,7 +137,7 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine) : IAsync
         {
             if (_api is null || _state.Settings.Origin != settings.Origin || _state.Settings.Owner != settings.Owner)
                 throw new ClientException("Подключение изменилось во время подготовки файлов. Добавьте файлы заново");
-            if (_state.Jobs.Count + prepared.Count > 100) throw new ClientException("В очереди может быть не более 100 файлов. Удалите завершённые записи");
+            if (_state.Jobs.Count + prepared.Count > 100) throw new ClientException("В очереди может быть не более 100 файлов или папок. Удалите завершённые записи");
             await CommitAsync(_state with { Jobs = _state.Jobs.Concat(prepared).ToArray() }, ct).ConfigureAwait(false);
             StartWorker();
         }
@@ -181,7 +181,8 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine) : IAsync
                 {
                     await UpdateAsync(job.Id, j => j with { Status = UploadStatus.Uploading, Message = "" }, active.Token).ConfigureAwait(false);
                     job = await engine.UploadAsync(api, job, (progress, ct) => UpdateAsync(job.Id,
-                        j => j with { Upload = progress.Upload, FileId = progress.FileId, Offset = progress.Offset }, ct), active.Token).ConfigureAwait(false);
+                        j => j with { Upload = progress.Upload, FileId = progress.FileId, Offset = progress.Offset,
+                            Directory = progress.Directory ?? j.Directory }, ct), active.Token).ConfigureAwait(false);
                     await UpdateAsync(job.Id, j => j with { Status = UploadStatus.Uploaded }, active.Token).ConfigureAwait(false);
                     await CreateLinkAsync(api, job, password, active.Token).ConfigureAwait(false);
                 }

@@ -4,7 +4,7 @@ using System.Text;
 
 namespace ShareFile.Core;
 
-public sealed class UploadEngine
+public sealed partial class UploadEngine
 {
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     public UploadEngine(Func<TimeSpan, CancellationToken, Task>? delay = null) => _delay = delay ?? Task.Delay;
@@ -16,7 +16,8 @@ public sealed class UploadEngine
     public static async Task<UploadJob> PrepareAsync(string source, string folder, CancellationToken ct = default)
     {
         Protocol.RequireIdentifier(folder);
-        source = Path.GetFullPath(source);
+        source = Path.TrimEndingDirectorySeparator(Path.GetFullPath(source));
+        if (System.IO.Directory.Exists(source)) return await PrepareDirectoryAsync(source, folder, ct).ConfigureAwait(false);
         if (!File.Exists(source) || (File.GetAttributes(source) & FileAttributes.Directory) != 0)
             throw new ClientException("Можно загружать только обычные файлы");
         await using var file = Open(source);
@@ -56,6 +57,7 @@ public sealed class UploadEngine
             job.Fingerprint.Length != 64 || !job.Fingerprint.All(Uri.IsHexDigit) ||
             (job.Upload.Length != 0 && (!Protocol.IsIdentifier(job.FileId) || Protocol.UploadPath(job.Upload) != job.Upload)))
             throw new ClientException("Некорректное состояние загрузки");
+        if (job.Directory is not null) ValidateDirectory(job);
     }
 
     private static void CheckSource(FileStream file, UploadJob job)
@@ -94,7 +96,14 @@ public sealed class UploadEngine
         Func<UploadJob, CancellationToken, Task> checkpoint, CancellationToken ct)
     {
         Validate(job);
-        await using var file = Open(job.Source);
+        if (job.Directory is not null) return await UploadDirectoryAsync(api, job, checkpoint, ct).ConfigureAwait(false);
+        return await UploadFileAsync(api, job, checkpoint, ct).ConfigureAwait(false);
+    }
+
+    private async Task<UploadJob> UploadFileAsync(IShareFileApi api, UploadJob job,
+        Func<UploadJob, CancellationToken, Task> checkpoint, CancellationToken ct, string? directoryRoot = null)
+    {
+        await using var file = directoryRoot is null ? Open(job.Source) : OpenDirectoryFile(directoryRoot, job.Source);
         CheckSource(file, job);
         if (await FingerprintAsync(file, job.Size, job.ModifiedTicks, ct).ConfigureAwait(false) != job.Fingerprint)
             throw new ClientException("Исходный файл изменился. Отмените загрузку и добавьте файл заново");
@@ -149,6 +158,7 @@ public sealed class UploadEngine
     public async Task CancelAsync(IShareFileApi api, UploadJob job, CancellationToken ct)
     {
         Validate(job);
+        if (job.Directory is not null) { await CancelDirectoryAsync(api, job, ct).ConfigureAwait(false); return; }
         if (job.Upload.Length == 0) job = await RetryAsync(() => api.CreateUploadAsync(job, ct), ct).ConfigureAwait(false);
         await RetryAsync(async () => { await api.CancelUploadAsync(job.Upload, ct).ConfigureAwait(false); return true; }, ct).ConfigureAwait(false);
     }

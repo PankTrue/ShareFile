@@ -3,7 +3,9 @@ import { UploadManager } from '../uploads';
 import { bytes } from '../utils';
 import { errorMessage } from '../api';
 import { Icon } from './Icon';
-import { ErrorBox, IconButton } from './UI';
+import { Button, ErrorBox, IconButton } from './UI';
+import { copy } from '../utils';
+import { directoryFromFiles } from '../directories';
 
 export const UploadContext = createContext<UploadManager | null>(null);
 export function useUploads() {
@@ -15,6 +17,7 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
   const manager = useUploads();
   const jobs = useSyncExternalStore(manager.subscribe, manager.getSnapshot);
   const [error, setError] = useState('');
+  const [copiedID, setCopiedID] = useState('');
   const active = jobs.filter((job) => job.status !== 'complete').length;
   async function action(work: () => Promise<void>) {
     setError('');
@@ -41,7 +44,9 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
           {jobs.map((job) => (
             <div className="upload-job" key={job.id}>
               <div className="upload-job-top">
-                <Icon name={job.status === 'complete' ? 'check' : 'file'} />
+                <Icon
+                  name={job.status === 'complete' ? 'check' : job.directory ? 'folder' : 'file'}
+                />
                 <div>
                   <strong title={job.name}>{job.name}</strong>
                   <small>
@@ -54,22 +59,26 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
                     label={`Приостановить ${job.name}`}
                     onClick={() => manager.pause(job.id)}
                   />
-                ) : ['paused', 'error'].includes(job.status) ? (
+                ) : ['paused', 'error'].includes(job.status) ||
+                  (job.status === 'reselect' &&
+                    job.directory?.files.every((entry) => entry.job.status === 'complete')) ? (
                   <IconButton
                     icon="play"
                     label={`Продолжить ${job.name}`}
                     onClick={() => manager.resume(job.id)}
                   />
                 ) : null}
-                <IconButton
-                  icon="close"
-                  label={
-                    job.status === 'complete'
-                      ? `Убрать ${job.name} из списка`
-                      : `Отменить ${job.name}`
-                  }
-                  onClick={() => void action(() => manager.remove(job.id))}
-                />
+                {job.status !== 'sharing' && (
+                  <IconButton
+                    icon="close"
+                    label={
+                      job.status === 'complete'
+                        ? `Убрать ${job.name} из списка`
+                        : `Отменить ${job.name}`
+                    }
+                    onClick={() => void action(() => manager.remove(job.id))}
+                  />
+                )}
               </div>
               <progress
                 value={job.status === 'complete' ? Math.max(1, job.size) : job.offset}
@@ -78,18 +87,77 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
               />
               <small className={job.error ? 'text-danger' : 'muted'}>
                 {job.status === 'complete'
-                  ? 'Сохранён в хранилище'
+                  ? job.directory
+                    ? 'Папка загружена · Ссылка на 7 дней'
+                    : 'Сохранён в хранилище'
                   : job.status === 'uploading'
                     ? 'Загружается…'
-                    : job.status === 'queued'
-                      ? 'В очереди'
-                      : job.status === 'reselect'
-                        ? 'Выберите исходный файл, чтобы продолжить'
-                        : job.status === 'paused'
-                          ? 'Приостановлено'
-                          : job.error}
+                    : job.status === 'sharing'
+                      ? 'Создаётся ссылка на папку…'
+                      : job.status === 'queued'
+                        ? 'В очереди'
+                        : job.status === 'reselect'
+                          ? job.directory
+                            ? 'Выберите исходную папку, чтобы продолжить'
+                            : 'Выберите исходный файл, чтобы продолжить'
+                          : job.status === 'paused'
+                            ? 'Приостановлено'
+                            : job.error}
               </small>
-              {job.status === 'reselect' && (
+              {job.link && (
+                <div className="generated-link">
+                  <input
+                    readOnly
+                    value={job.link}
+                    onFocus={(e) => e.target.select()}
+                    aria-label={`Ссылка на папку ${job.name}`}
+                  />
+                  <Button
+                    icon="link"
+                    onClick={() =>
+                      void action(async () => {
+                        await copy(job.link!);
+                        setCopiedID(job.id);
+                      })
+                    }
+                  >
+                    {copiedID === job.id ? 'Ссылка скопирована' : 'Скопировать ссылку'}
+                  </Button>
+                </div>
+              )}
+              {job.directory && job.fileID && (
+                <a className="uploaded-folder-link" href={`#/files/${job.fileID}`}>
+                  Открыть загруженную папку
+                </a>
+              )}
+              {job.directory && job.status === 'reselect' && job.directory.files.length > 0 && (
+                <label className="button">
+                  Выбрать исходную папку
+                  <input
+                    type="file"
+                    multiple
+                    className="visually-hidden"
+                    aria-label={`Продолжить загрузку папки ${job.name}`}
+                    ref={(node) => {
+                      if (node) node.webkitdirectory = true;
+                    }}
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files ?? []);
+                      e.target.value = '';
+                      void action(async () =>
+                        manager.reselectDirectory(job.id, directoryFromFiles(files)),
+                      );
+                    }}
+                  />
+                </label>
+              )}
+              {job.directory && job.status === 'reselect' && (
+                <p className="hint">
+                  Можно перетащить ту же папку в её прежнюю папку назначения. Пустую папку
+                  продолжите кнопкой ▶.
+                </p>
+              )}
+              {job.status === 'reselect' && !job.directory && (
                 <label className="button secondary reselect">
                   Выбрать файл
                   <input

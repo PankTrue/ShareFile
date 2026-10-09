@@ -87,6 +87,27 @@ public sealed class ShareFileApi : IShareFileApi, IDisposable
     public Task<Node> NodeAsync(string id, CancellationToken cancellationToken) =>
         JsonAsync<Node>(HttpMethod.Get, "/api/v1/nodes/" + Protocol.RequireIdentifier(id), null, HttpStatusCode.OK, cancellationToken);
 
+    public async Task<Node> CreateFolderAsync(string parent, string name, string key, CancellationToken cancellationToken)
+    {
+        using var deadline = Deadline(cancellationToken);
+        using var request = Request(HttpMethod.Post, "/api/v1/folders",
+            JsonContent.Create(new { parent_id = Protocol.RequireIdentifier(parent), name }, options: Json));
+        request.Headers.Add("Idempotency-Key", Protocol.RequireIdentifier(key));
+        using var response = await SendAsync(request, HttpStatusCode.Created, deadline.Token).ConfigureAwait(false);
+        var node = await ReadAsync<Node>(response, deadline.Token).ConfigureAwait(false);
+        Protocol.RequireIdentifier(node.Id);
+        if (node.Kind != "folder" || node.ParentId != parent) throw new ClientException("Сервер вернул некорректную папку");
+        return node;
+    }
+
+    public async Task TrashNodeAsync(string id, CancellationToken cancellationToken)
+    {
+        using var deadline = Deadline(cancellationToken);
+        using var request = Request(HttpMethod.Delete, "/api/v1/nodes/" + Protocol.RequireIdentifier(id));
+        try { using var response = await SendAsync(request, HttpStatusCode.NoContent, deadline.Token).ConfigureAwait(false); }
+        catch (ApiException error) when (error.Status == 404) { }
+    }
+
     public async Task<IReadOnlyList<Node>> FoldersAsync(string parent, CancellationToken cancellationToken)
     {
         if (parent.Length != 0) Protocol.RequireIdentifier(parent);

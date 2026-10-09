@@ -210,6 +210,8 @@ internal sealed class FakeApi : IShareFileApi
     public Task<Session> MeAsync(CancellationToken ct) => Task.FromResult(new Session(new User(Owner, "test", Folder)));
     public Task<IReadOnlyList<Node>> FoldersAsync(string parent, CancellationToken ct) => Task.FromResult<IReadOnlyList<Node>>([new Node(Folder, "Uploads", "folder", "", 3)]);
     public Task<Node> NodeAsync(string id, CancellationToken ct) => Task.FromResult(new Node(Folder, "Uploads", "folder", "", 3));
+    public Task<Node> CreateFolderAsync(string parent, string name, string key, CancellationToken ct) => throw new NotSupportedException();
+    public Task TrashNodeAsync(string id, CancellationToken ct) => throw new NotSupportedException();
     public Task<UploadJob> CreateUploadAsync(UploadJob job, CancellationToken ct)
     {
         IdempotencyKeys.Add(job.Id);

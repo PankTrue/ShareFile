@@ -588,7 +588,7 @@
         "tags": [
           "API"
         ],
-        "description": "Editor on parent required. An empty parent_id creates a shared root, administrator only. Duplicate visible names receive a numeric suffix.",
+        "description": "Editor on parent required. An empty parent_id creates a shared root, administrator only. Duplicate visible names receive a numeric suffix. Optional Idempotency-Key (at most 128 bytes) recovers the same folder for the same user, original parent and name. Changed parameters or a trashed/moved result return 409. Permissions are rechecked; independent keys create independent folders, never merge by name. Keys remain until the corresponding node is purged.",
         "parameters": [
           {
             "name": "X-CSRF-Token",
@@ -598,6 +598,16 @@
               "type": "string"
             },
             "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "description": "Persist before requesting creation. Repeat the same key and input after a lost response."
           }
         ],
         "requestBody": {

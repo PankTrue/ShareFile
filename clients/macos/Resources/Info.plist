@@ -16,10 +16,10 @@
     <key>NSMenuItem</key><dict><key>default</key><string>ShareFile: Загрузить и поделиться</string></dict>
     <key>NSMessage</key><string>uploadAndShare</string>
     <key>NSPortName</key><string>ShareFile</string>
-    <key>NSSendFileTypes</key><array><string>public.data</string></array>
+    <key>NSSendFileTypes</key><array><string>public.data</string><string>public.folder</string></array>
     <key>NSSendTypes</key><array><string>public.file-url</string><string>NSFilenamesPboardType</string></array>
     <key>NSRequiredContext</key><dict><key>NSApplicationIdentifier</key><string>com.apple.finder</string></dict>
     <key>NSReturnTypes</key><array/>
-    <key>NSServiceDescription</key><string>Загрузить выбранные файлы в ShareFile и скопировать публичные ссылки.</string>
+    <key>NSServiceDescription</key><string>Загрузить файлы и папки с сохранением вложенности и скопировать ссылки. Одна ссылка на каждый каталог.</string>
   </dict></array>
 </dict></plist>

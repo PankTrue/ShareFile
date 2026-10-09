@@ -47,11 +47,10 @@ public sealed class DesktopIntegration : IDisposable
     public void Notify(BatchCompletion batch, bool copied)
     {
         if (!batch.Notify) return;
-        var title = batch.Names.Count == 1 ? "Файл загружен" : "Файлы загружены";
-        var files = batch.Names.Count == 1 ? batch.Names[0] : $"Загружено файлов: {batch.Names.Count}";
+        var files = batch.Names.Count == 1 ? batch.Names[0] : $"Загружено объектов: {batch.Names.Count}";
         var status = copied ? "Ссылки скопированы" : "Не удалось скопировать ссылки. Откройте ShareFile";
         // No capabilities in banners or logs. Windows can suppress banners without affecting uploads.
-        _tray.ShowBalloonTip(5000, title, files + Environment.NewLine + status, Forms.ToolTipIcon.Info);
+        _tray.ShowBalloonTip(5000, "Загрузка завершена", files + Environment.NewLine + status, Forms.ToolTipIcon.Info);
     }
     public void NotifyFailure(string message, bool notify)
     {

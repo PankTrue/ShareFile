@@ -63,7 +63,7 @@ func Prepare(path, folder string) (Job, error) {
 	defer f.Close()
 	s, err := f.Stat()
 	if err != nil || !s.Mode().IsRegular() {
-		return Job{}, errors.New("Можно загружать только обычные файлы; папки пока не поддерживаются")
+		return Job{}, errors.New("Можно загружать только обычные файлы")
 	}
 	stamp := s.ModTime().UnixNano()
 	fp, err := fingerprint(f, s.Size(), stamp)
@@ -166,10 +166,13 @@ func retry(ctx context.Context, fn func() error) error {
 // Upload always reconciles with HEAD after an interrupted request. Only the durable server offset wins.
 // Progress reports accepted bytes, rather than bytes merely written into a socket.
 func (c *Client) Upload(ctx context.Context, j *Job, progress func(Job)) error {
+	return c.upload(ctx, j, progress, os.Open)
+}
+func (c *Client) upload(ctx context.Context, j *Job, progress func(Job), open func(string) (*os.File, error)) error {
 	if err := validateJob(*j); err != nil {
 		return err
 	}
-	f, err := os.Open(j.Source)
+	f, err := open(j.Source)
 	if err != nil {
 		return errors.New("Исходный файл недоступен. Проверьте разрешение или расположение файла")
 	}

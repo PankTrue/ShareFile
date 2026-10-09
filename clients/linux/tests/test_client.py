@@ -66,12 +66,23 @@ class FakeBridge:
             return {"user": {"id": OWNER, "home_id": FOLDER, "username": "tester"}}
         if operation == "folders":
             return [{"id": FOLDER, "name": "Uploads", "kind": "folder", "effective_role": 3}]
-        if operation == "prepare":
+        if operation in ("prepare", "prepare_directory"):
             type(self).counter += 1
             value = job(identity=str(self.counter).zfill(43))
             value["source"] = request["source"]
             value["name"] = Path(request["source"]).name
-            return {key: value[key] for key in CHECKPOINT}
+            value = {key: value[key] for key in CHECKPOINT}
+            if operation == "prepare_directory":
+                value.update(size=0, directory={"folders": [{"path": "empty", "key": "e" * 43, "id": ""}], "files": []})
+            return value
+        if operation == "upload_directory":
+            value = copy.deepcopy(request["directory_job"])
+            value["file_id"] = FILE
+            value["directory"]["folders"][0]["id"] = "d" * 43
+            progress(value)
+            # Chunk events can omit the manifest. The adapter must keep its durable IDs.
+            progress({key: value[key] for key in CHECKPOINT})
+            return value
         if operation == "upload":
             value = copy.deepcopy(request["job"])
             value.update(upload="/api/v1/uploads/" + IDENTITY, file_id=FILE, offset=70000)
@@ -140,6 +151,22 @@ class ControllerTests(unittest.TestCase):
         self.wait_idle()
         self.assertFalse(self.completions[0]["notify"])
         self.assertTrue(self.completions[0]["links"])
+
+    def test_directory_manifest_survives_compact_progress_and_lost_share(self):
+        source = Path(self.directory.name) / "Проект"
+        source.mkdir()
+        FakeBridge.share_error = True
+        self.controller.add_files([str(source)]).result(timeout=5)
+        self.wait_idle()
+        queued, = self.store.load()["jobs"]
+        self.assertEqual(queued["status"], "uncertain")
+        self.assertEqual(queued["directory"]["folders"][0]["id"], "d" * 43)
+        self.assertEqual(len([request for request in FakeBridge.requests if request["operation"] == "share"]), 1)
+        self.controller.resume(queued["id"]).result(timeout=5)
+        self.wait_idle()
+        shares = [request for request in FakeBridge.requests if request["operation"] == "share"]
+        self.assertEqual(len(shares), 1)
+        self.assertNotIn("directory", shares[0]["job"])
 
     def test_pause_durable_resource_and_resume(self):
         FakeBridge.block_upload = threading.Event()
@@ -323,6 +350,8 @@ class InstallerTests(unittest.TestCase):
                 self.assertIn('"$@"', paths["nautilus"].read_text())
                 self.assertNotIn("NAUTILUS_SCRIPT_SELECTED_FILE_PATHS", paths["nautilus"].read_text())
                 self.assertIn("--background -- %F", paths["dolphin"].read_text())
+                self.assertIn("inode/directory;", paths["dolphin"].read_text())
+                self.assertIn("Extensions=any;", paths["nemo"].read_text())
                 state = home / ".local/state/sharefile/state.json"
                 state.parent.mkdir(parents=True)
                 state.write_text("preserved")

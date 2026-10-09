@@ -120,6 +120,62 @@ public sealed class BackendTests
             Assert.Equal(0, zero.Offset);
             var zeroLink = await api.ShareAsync(zero.FileId, new ShareOptions(), ct);
             Assert.Empty(await http.GetByteArrayAsync(zeroLink.Url, ct));
+            // A directory is one queue item, one capability, and an independently resumable tree.
+            var tree = Path.Combine(root, "Проект 日本語");
+            Directory.CreateDirectory(Path.Combine(tree, "a"));
+            Directory.CreateDirectory(Path.Combine(tree, "b"));
+            Directory.CreateDirectory(Path.Combine(tree, "empty", "nested"));
+            await File.WriteAllBytesAsync(Path.Combine(tree, "a", "report.txt"), payload, ct);
+            await File.WriteAllTextAsync(Path.Combine(tree, "b", "report.txt"), "different report", ct);
+            await File.WriteAllBytesAsync(Path.Combine(tree, "zero.txt"), [], ct);
+            var directoryJob = await UploadEngine.PrepareAsync(tree, folder.Id, ct);
+            Assert.NotNull(directoryJob.Directory);
+            var directoryRoot = await api.CreateFolderAsync(folder.Id, directoryJob.Name, directoryJob.Id, ct);
+            var folderIds = new Dictionary<string, string> { [""] = directoryRoot.Id };
+            foreach (var entry in directoryJob.Directory.Folders)
+            {
+                var parentPath = entry.Path.Contains('/') ? entry.Path[..entry.Path.LastIndexOf('/')] : "";
+                var node = await api.CreateFolderAsync(folderIds[parentPath], entry.Path.Split('/').Last(), entry.Key, ct);
+                folderIds[entry.Path] = node.Id;
+            }
+            var first = directoryJob.Directory.Files[0].Job with { Folder = folderIds["a"] };
+            var firstCreated = await api.CreateUploadAsync(first, ct);
+            using (var partial = new MemoryStream(payload[..70000])) await api.PatchAsync(firstCreated.Upload, 0, partial, partial.Length, ct);
+            // Restart with all create replies absent from the persisted directory manifest.
+            await StopAsync(); await StartAsync();
+            var stateFile = Path.Combine(root, "client", "state.json");
+            var stateStore = new JsonStateStore(stateFile);
+            await stateStore.SaveAsync(new ClientState { Settings = new ClientSettings { Origin = origin, Owner = session.User.Id, Folder = folder.Id },
+                Jobs = [directoryJob with { Status = UploadStatus.Uploading, Batch = directoryJob.Id }] }, ct);
+            await using (var queue = new UploadQueue(stateStore, engine))
+            {
+                var completions = new List<BatchCompletion>(); queue.Completed += completions.Add;
+                await queue.LoadAsync(ct); await queue.AttachAsync(api, "", ct);
+                Assert.Equal(UploadStatus.Paused, Assert.Single(queue.State.Jobs).Status);
+                await queue.ResumeAsync(directoryJob.Id, ct); await queue.WaitForIdleAsync(ct);
+                var done = Assert.Single(queue.State.Jobs);
+                Assert.Equal(UploadStatus.Done, done.Status); Assert.Equal(directoryRoot.Id, done.FileId);
+                Assert.Equal(done.Size, done.Offset); Assert.Single(Assert.Single(completions).Links);
+                Assert.Equal(firstCreated.FileId, done.Directory!.Files[0].Job.FileId);
+                foreach (var entry in done.Directory.Files)
+                {
+                    Assert.True(entry.Complete);
+                    var expected = await File.ReadAllBytesAsync(entry.Job.Source, ct);
+                    Assert.Equal(expected, await http.GetByteArrayAsync(done.Link + "/nodes/" + entry.Job.FileId, ct));
+                }
+                Assert.Equal("empty/nested", done.Directory.Folders.Last().Path);
+                Assert.Empty(await api.FoldersAsync(done.Directory.Folders.Last().Id, ct));
+                Assert.Equal(JsonSerializer.Serialize(done.Directory), JsonSerializer.Serialize((await stateStore.LoadAsync(ct)).Jobs[0].Directory));
+                var persisted = await File.ReadAllTextAsync(stateFile, ct);
+                Assert.DoesNotContain(token, persisted); Assert.DoesNotContain("/s/", persisted);
+            }
+            var changed = await UploadEngine.PrepareAsync(tree, folder.Id, ct);
+            await File.WriteAllTextAsync(Path.Combine(tree, "new.txt"), "changed", ct);
+            await Assert.ThrowsAsync<ClientException>(() => engine.UploadAsync(api, changed, (_, _) => Task.CompletedTask, ct));
+            var cancellation = await UploadEngine.PrepareAsync(tree, folder.Id, ct);
+            var cancelledRoot = await api.CreateFolderAsync(folder.Id, cancellation.Name, cancellation.Id, ct);
+            await engine.CancelAsync(api, cancellation, ct);
+            await Assert.ThrowsAsync<ApiException>(() => api.NodeAsync(cancelledRoot.Id, ct));
             var cancel = await api.CreateUploadAsync(await UploadEngine.PrepareAsync(source, folder.Id, ct), ct);
             await engine.CancelAsync(api, cancel, ct);
             await Assert.ThrowsAsync<ApiException>(() => api.HeadAsync(cancel.Upload, ct));

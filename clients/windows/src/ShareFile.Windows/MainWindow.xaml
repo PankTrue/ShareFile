@@ -7,7 +7,7 @@
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <DockPanel Margin="0,0,0,20">
       <StackPanel DockPanel.Dock="Left"><TextBlock Text="ShareFile" FontSize="28" FontWeight="SemiBold"/>
-        <TextBlock Text="Загрузить файлы и поделиться ссылками" Foreground="Gray"/></StackPanel>
+        <TextBlock Text="Загрузить файлы или папку и поделиться ссылками" Foreground="Gray"/></StackPanel>
       <StackPanel HorizontalAlignment="Right"><TextBlock Text="{Binding Username}" HorizontalAlignment="Right"/>
         <Button Content="Открыть хранилище" Command="{Binding OpenWebCommand}" Margin="0,6,0,0"/></StackPanel>
     </DockPanel>
@@ -15,12 +15,13 @@
       <TabItem Header="Файлы">
         <Grid Margin="16"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <WrapPanel><Button Content="Выбрать файлы…" Command="{Binding ChooseFilesCommand}"/>
+            <Button Content="Загрузить папку…" Command="{Binding ChooseDirectoryCommand}"/>
             <Button Content="Пауза для всех" Command="{Binding PauseAllCommand}"/></WrapPanel>
-          <TextBlock Grid.Row="1" Margin="0,4,0,16"><Run Text="Папка назначения: "/><Run Text="{Binding FolderName}"/><Run Text=". Можно перетащить файлы в окно."/></TextBlock>
+          <TextBlock Grid.Row="1" Margin="0,4,0,16" TextWrapping="Wrap"><Run Text="Папка назначения: "/><Run Text="{Binding FolderName}"/><Run Text=". Перетащите файлы или папку в окно. Для папки создаётся одна ссылка."/></TextBlock>
           <DataGrid Grid.Row="2" ItemsSource="{Binding Jobs}" SelectedItem="{Binding SelectedJob}" AutoGenerateColumns="False"
                     IsReadOnly="True" SelectionMode="Single" CanUserAddRows="False" EnableRowVirtualization="True">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="Файл" Binding="{Binding Name}" Width="*"/>
+              <DataGridTextColumn Header="Файл или папка" Binding="{Binding Name}" Width="*"/>
               <DataGridTextColumn Header="Состояние" Binding="{Binding Status}" Width="190"/>
               <DataGridTemplateColumn Header="Загрузка" Width="170"><DataGridTemplateColumn.CellTemplate><DataTemplate>
                 <StackPanel Margin="8"><ProgressBar Value="{Binding Progress}" Height="5" Maximum="100"/>

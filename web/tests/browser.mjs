@@ -422,6 +422,78 @@ try {
   assert.equal(revoked.status(), 204);
   assert.equal((await anonymous.request.get(imagePreviewURL)).status(), 404);
   assert.equal((await guest.reload()).status(), 404);
+  // A genuine browser directory drop (CDP file drag), including empty directories.
+  await user.goto(publicURL + `/#/files/${projects}`);
+  await visible(user.getByRole('button', { name: 'Загрузить папку', exact: true }));
+  const directorySource = join(fixture, 'Папка 日本語');
+  await mkdir(join(directorySource, 'a'), { recursive: true });
+  await mkdir(join(directorySource, 'b'), { recursive: true });
+  await mkdir(join(directorySource, 'empty/nested'), { recursive: true });
+  await writeFile(join(directorySource, 'a/report.txt'), 'first folder');
+  await writeFile(join(directorySource, 'b/report.txt'), 'second folder');
+  await writeFile(join(directorySource, 'zero.txt'), '');
+  const drag = await userContext.newCDPSession(user);
+  const dropBox = await user.locator('.file-card').boundingBox();
+  for (const type of ['dragEnter', 'dragOver', 'drop']) {
+    await drag.send('Input.dispatchDragEvent', {
+      type,
+      x: dropBox.x + 30,
+      y: dropBox.y + 70,
+      data: { items: [], files: [directorySource], dragOperationsMask: 1 },
+    });
+  }
+  const wholeFolderLink = user.getByLabel('Ссылка на папку Папка 日本語', { exact: true });
+  await visible(wholeFolderLink);
+  const wholeURL = await wholeFolderLink.inputValue();
+  const projectsChildren = await (
+    await userContext.request.get(publicURL + `/api/v1/folders?parent_id=${projects}`)
+  ).json();
+  const uploadedTree = projectsChildren.find((node) => node.name === 'Папка 日本語');
+  assert(uploadedTree);
+  const treeNodes = await (
+    await userContext.request.get(publicURL + `/api/v1/folders?parent_id=${uploadedTree.id}`)
+  ).json();
+  assert.deepEqual(treeNodes.map((node) => node.name).sort(), ['a', 'b', 'empty', 'zero.txt']);
+  for (const [folder, contents] of [
+    ['a', 'first folder'],
+    ['b', 'second folder'],
+  ]) {
+    const nested = treeNodes.find((node) => node.name === folder);
+    const leaves = await (
+      await userContext.request.get(publicURL + `/api/v1/folders?parent_id=${nested.id}`)
+    ).json();
+    assert.equal(leaves[0].name, 'report.txt');
+    assert.equal(
+      await (await anonymous.request.get(wholeURL + `/nodes/${leaves[0].id}`)).text(),
+      contents,
+    );
+  }
+  const emptyTree = treeNodes.find((node) => node.name === 'empty');
+  const emptyChildren = await (
+    await userContext.request.get(publicURL + `/api/v1/folders?parent_id=${emptyTree.id}`)
+  ).json();
+  assert.equal(emptyChildren[0].name, 'nested');
+  const treeShares = await (
+    await userContext.request.get(publicURL + `/api/v1/shares?node_id=${uploadedTree.id}`)
+  ).json();
+  assert.equal(treeShares.length, 1);
+  await guest.goto(wholeURL);
+  await guest.getByRole('link', { name: 'a Папка', exact: true }).click();
+  await visible(guest.getByRole('link', { name: 'report.txt Открыть предпросмотр', exact: true }));
+  await user.screenshot({
+    path: join(screenshots, 'directory-upload-desktop.png'),
+    fullPage: true,
+  });
+  // Directory picker preserves relative paths too (FileList does not expose empty folders).
+  const pickerSource = join(fixture, 'Через выбор папки');
+  await mkdir(join(pickerSource, 'nested'), { recursive: true });
+  await writeFile(join(pickerSource, 'nested/file.txt'), 'picker upload');
+  await user.getByLabel('Выбрать папку для загрузки', { exact: true }).setInputFiles(pickerSource);
+  await visible(user.getByLabel('Ссылка на папку Через выбор папки', { exact: true }));
+  await user.getByRole('button', { name: 'Убрать Папка 日本語 из списка', exact: true }).click();
+  await user
+    .getByRole('button', { name: 'Убрать Через выбор папки из списка', exact: true })
+    .click();
   // Responsive layout and horizontal overflow, including real loaded rows.
   await user.goto(publicURL + `/#/files/${projects}`);
   await visible(user.getByRole('link', { name: 'Документ.txt', exact: true }));
@@ -454,7 +526,7 @@ try {
   assert.equal((await publicAdmin.request.get(publicURL + '/api/v1/admin/users')).status(), 404);
   assert.deepEqual(errors, [], 'Browser errors/CSP violations');
   console.log(
-    'Browser acceptance passed: auth, private admin, users/groups/ACL, reader/manager UI, chunked upload and SHA-256, sharing, rename/move/replace/revoke/trash/restore, real lost-response upload resume after reload with SHA-256, device pairing/revocation, settings/import, password-protected live folder, nested navigation, escaped text/photo previews, downloads, preview revocation, mobile layout, logout.',
+    'Browser acceptance passed: auth, private admin, users/groups/ACL, reader/manager UI, chunked upload and SHA-256, sharing, rename/move/replace/revoke/trash/restore, lost-response resume, device pairing/revocation, settings/import, password-protected live folder, previews, real directory drag/drop with empty folders and duplicate basenames, one folder link, directory picker, mobile layout, logout.',
   );
 } catch (error) {
   if (browser)

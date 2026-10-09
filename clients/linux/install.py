@@ -80,9 +80,9 @@ def install(source, home=None, autostart=False, check=True):
     write(target["nautilus"], script, 0o755)
     # Nemo quotes each path with the requested Quote character.
     write(target["nemo"], f"[Nemo Action]\nName={NAME}\nComment=Загрузить файлы и скопировать ссылки\n"
-          f"Exec={command} --background -- %F\nIcon-Name={APP_ID}\nSelection=notnone\nExtensions=nodirs;\n"
+          f"Exec={command} --background -- %F\nIcon-Name={APP_ID}\nSelection=notnone\nExtensions=any;\n"
           "Quote=double\nUriScheme=file\n")
-    write(target["dolphin"], "[Desktop Entry]\nType=Service\nMimeType=application/octet-stream;\n"
+    write(target["dolphin"], "[Desktop Entry]\nType=Service\nMimeType=application/octet-stream;inode/directory;\n"
           "X-KDE-ServiceTypes=KonqPopupMenu/Plugin\nX-KDE-Protocols=file\nActions=Share;\n\n"
           f"[Desktop Action Share]\nName={NAME}\nIcon={APP_ID}\nExec={command} --background -- %F\n", 0o755)
     if autostart:

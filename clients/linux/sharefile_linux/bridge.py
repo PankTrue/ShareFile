@@ -29,7 +29,7 @@ class BridgeCall:
         process = subprocess.Popen([self.helper], stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         try:
-            process.stdin.write(json.dumps(request, ensure_ascii=True).encode() + b"\n")
+            process.stdin.write(json.dumps(request, ensure_ascii=False).encode() + b"\n")
             process.stdin.close()
             # Use unbuffered reads: BufferedReader may prefetch a final event past select().
             buffer = b""
@@ -48,7 +48,7 @@ class BridgeCall:
                     if not chunk:
                         raise ClientError("Ядро передачи завершилось без результата")
                     buffer += chunk
-                    if len(buffer) > 1 << 20:
+                    if len(buffer) > 16 << 20:
                         raise ClientError("Слишком большой ответ ядра передачи")
                     while b"\n" in buffer:
                         line, buffer = buffer.split(b"\n", 1)

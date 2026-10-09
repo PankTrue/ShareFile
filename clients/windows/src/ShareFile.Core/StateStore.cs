@@ -19,7 +19,7 @@ public sealed class JsonStateStore(string path) : IStateStore
     public async Task<ClientState> LoadAsync(CancellationToken ct = default)
     {
         if (!File.Exists(path)) return new ClientState();
-        if (new FileInfo(path).Length > 4 * 1024 * 1024) throw new ClientException("Файл очереди слишком большой");
+        if (new FileInfo(path).Length > 64 * 1024 * 1024) throw new ClientException("Файл очереди слишком большой");
         await using var file = File.OpenRead(path);
         try
         {
@@ -45,6 +45,7 @@ public sealed class JsonStateStore(string path) : IStateStore
                 16384, FileOptions.Asynchronous | FileOptions.WriteThrough))
             {
                 await JsonSerializer.SerializeAsync(file, state, Json, ct).ConfigureAwait(false);
+                if (file.Length > 64 * 1024 * 1024) throw new ClientException("Очередь слишком большая. Удалите завершённые записи");
                 await file.FlushAsync(ct).ConfigureAwait(false);
                 file.Flush(flushToDisk: true);
             }

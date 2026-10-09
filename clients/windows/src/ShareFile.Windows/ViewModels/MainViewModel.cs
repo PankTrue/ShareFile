@@ -19,7 +19,7 @@ public sealed record UploadRow(UploadJob Job)
         UploadStatus.Queued => "В очереди",
         UploadStatus.Uploading => "Загружается",
         UploadStatus.Paused => "На паузе",
-        UploadStatus.Uploaded => "Файл загружен",
+        UploadStatus.Uploaded => "Загрузка завершена",
         UploadStatus.Sharing => "Создаётся ссылка",
         UploadStatus.Done => "Готово",
         UploadStatus.Uncertain => "Проверьте ссылки в Web UI",
@@ -78,13 +78,13 @@ public sealed partial class MainViewModel : ObservableObject
         });
         _queue.BatchFailed += batch => Application.Current.Dispatcher.BeginInvoke(() =>
         {
-            Notice = $"Не удалось завершить файлов: {batch.FailedCount} из {batch.TotalCount}. Откройте очередь и проверьте состояние";
+            Notice = $"Не удалось завершить объектов: {batch.FailedCount} из {batch.TotalCount}. Откройте очередь и проверьте состояние";
             _desktop.NotifyFailure(Notice, batch.Notify);
         });
         _queue.Completed += batch => Application.Current.Dispatcher.BeginInvoke(async () =>
         {
             var copied = await _desktop.CopyAsync(string.Join(Environment.NewLine, batch.Links));
-            Notice = copied ? $"Загружено файлов: {batch.Names.Count}. Ссылки скопированы" : "Файлы загружены. Буфер обмена недоступен — нажмите «Скопировать ссылку»";
+            Notice = copied ? $"Загружено объектов: {batch.Names.Count}. Ссылки скопированы" : "Загрузка завершена. Буфер обмена недоступен — нажмите «Скопировать ссылку»";
             _desktop.Notify(batch, copied);
         });
     }
@@ -158,7 +158,7 @@ public sealed partial class MainViewModel : ObservableObject
                 catch { await _queue.DetachAsync(CancellationToken.None); api.Dispose(); throw; }
                 _api?.Dispose(); _api = api;
                 IsConnected = true; ServerInput = origin; SelectedTab = 0;
-                Notice = "Компьютер подключён. Можно загружать файлы";
+                Notice = "Компьютер подключён. Можно загружать файлы и папки";
                 await FlushPendingAsync();
                 return;
             }
@@ -212,14 +212,21 @@ public sealed partial class MainViewModel : ObservableObject
         if (dialog.ShowDialog() == true) await AcceptFilesAsync(dialog.FileNames, false);
     }
 
+    [RelayCommand]
+    private async Task ChooseDirectoryAsync()
+    {
+        var dialog = new OpenFolderDialog { Multiselect = true, Title = "Загрузить папку целиком" };
+        if (dialog.ShowDialog() == true) await AcceptFilesAsync(dialog.FolderNames, false);
+    }
+
     public async Task AcceptFilesAsync(IEnumerable<string> paths, bool explorer)
     {
         var files = paths.ToArray();
         if (!IsConnected)
         {
-            if (_pending.Count + files.Length > 100) { Notice = "Слишком много файлов: максимум 100"; ShowRequested?.Invoke(); return; }
+            if (_pending.Count + files.Length > 100) { Notice = "Слишком много объектов: максимум 100"; ShowRequested?.Invoke(); return; }
             _pending.AddRange(files); SelectedTab = 1;
-            Notice = "Подключите хранилище. Выбранные файлы добавятся после подтверждения";
+            Notice = "Подключите хранилище. Выбранные файлы и папки добавятся после подтверждения";
             ShowRequested?.Invoke(); return;
         }
         if (!explorer || !_queue.State.Settings.SilentExplorerUploads) ShowRequested?.Invoke();
@@ -240,7 +247,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (SelectedJob is not { } row) return;
         if (row.Job.Status == UploadStatus.Uncertain && MessageBox.Show(
-            "Сервер мог создать предыдущую ссылку. Проверьте ссылки файла в Web UI и отзовите неизвестные. Создать новую ссылку?",
+            "Сервер мог создать предыдущую ссылку. Проверьте ссылки объекта в Web UI и отзовите неизвестные. Создать новую ссылку?",
             "Новая публичная ссылка", MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes) return;
         await GuardAsync(async () => { await _queue.NewLinkAsync(row.Job.Id); await CopyLinkAsync(); });
     }

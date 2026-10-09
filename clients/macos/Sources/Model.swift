@@ -18,22 +18,29 @@ struct Upload: Codable, Identifiable {
     var days = 7
     var never = false
     var shareID = ""
+    // Encoded transfer manifest; includes folders, file checkpoints and completion flags.
+    var directory: Data?
     // Public capabilities remain in memory and are deliberately excluded from persisted state.
     var link: String = ""
     enum CodingKeys: String, CodingKey {
         case id, source, name, size, modified, fingerprint, folder, upload, file_id, offset
-        case status, message, batch, days, never, shareID
+        case status, message, batch, days, never, shareID, directory
     }
     var checkpoint: [String: Any] {
         ["id": id, "source": source, "name": name, "size": size, "modified": modified,
          "fingerprint": fingerprint, "folder": folder, "upload": upload, "file_id": file_id, "offset": offset]
+    }
+    var directoryCheckpoint: [String: Any] {
+        var value = checkpoint
+        if let directory, let manifest = try? JSONSerialization.jsonObject(with: directory) { value["directory"] = manifest }
+        return value
     }
     var label: String {
         switch status {
         case "queued": return "В очереди"
         case "uploading": return "Загружается"
         case "paused": return "На паузе"
-        case "uploaded": return "Файл загружен"
+        case "uploaded": return "Сохранено в хранилище"
         case "sharing": return "Создаётся ссылка"
         case "uncertain": return "Проверьте ссылки в Web UI"
         case "done": return "Готово"
@@ -86,9 +93,9 @@ struct Preferences: Codable {
 struct UploadCompletion: Equatable {
     let names: [String]
     let copied: Bool
-    var title: String { names.count == 1 ? "Файл загружен" : "Файлы загружены" }
+    var title: String { "Загрузка завершена" }
     var body: String {
-        let files = names.count == 1 ? names[0] : "Загружено файлов: \(names.count)"
+        let files = names.count == 1 ? names[0] : "Загружено объектов: \(names.count)"
         let result = copied ? (names.count == 1 ? "Ссылка скопирована" : "Ссылки скопированы") : "Не удалось скопировать ссылку. Откройте ShareFile"
         return files + "\n" + result
     }
@@ -242,7 +249,7 @@ struct UploadCompletion: Equatable {
     func setSilentFinderUploads(_ enabled: Bool) { settings.silentFinderUploads = enabled; save() }
     func setNotifyUploads(_ enabled: Bool) { settings.notifyUploads = enabled; save() }
     func chooseFiles() {
-        let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.canChooseFiles = true; panel.allowsMultipleSelection = true
+        let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = true; panel.allowsMultipleSelection = true
         panel.prompt = "Загрузить и поделиться"
         panel.begin { response in if response == .OK { Task { @MainActor in self.add(panel.urls) } } }
     }
@@ -255,9 +262,10 @@ struct UploadCompletion: Equatable {
         Task {
             defer { preparingBatches.remove(batch); finishBatch(batch) }
             for url in urls {
-                if settings.uploads.count >= 100 { notice = "В очереди уже 100 файлов. Удалите завершённые записи"; break }
+                if settings.uploads.count >= 100 { notice = "В очереди уже 100 загрузок. Удалите завершённые записи"; break }
                 do {
-                    let raw = try await request("prepare", ["source": url.path, "parent": folder])
+                    let isDirectory = try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true
+                    let raw = try await request(isDirectory ? "prepare_directory" : "prepare", ["source": url.path, "parent": folder])
                     let data = try JSONSerialization.data(withJSONObject: raw)
                     var job = try JSONDecoder().decode(Upload.self, from: dataWithJobDefaults(data))
                     job.batch = batch; job.days = days; job.never = never
@@ -268,7 +276,10 @@ struct UploadCompletion: Equatable {
         }
     }
     private func dataWithJobDefaults(_ data: Data) throws -> Data {
-        let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        var raw = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        if let directory = raw["directory"] as? [String: Any] {
+            raw["directory"] = try JSONSerialization.data(withJSONObject: directory).base64EncodedString()
+        }
         return try JSONSerialization.data(withJSONObject: ["status": "queued", "message": "", "batch": "", "days": 7, "never": false, "shareID": ""].merging(raw) { _, new in new })
     }
     func update(_ id: String, persist: Bool = true, _ change: (inout Upload) -> Void) {
@@ -290,19 +301,26 @@ struct UploadCompletion: Equatable {
                 activeID = job.id; let call = BridgeCall(); activeCall = call
                 update(job.id) { $0.status = "uploading" }
                 do {
-                    let result = try await request("upload", ["job": job.checkpoint], call: call) { raw in
+                    let operation = job.directory == nil ? "upload" : "upload_directory"
+                    let input = job.directory == nil ? ["job": job.checkpoint] : ["directory_job": job.directoryCheckpoint]
+                    let result = try await request(operation, input, call: call) { raw in
                         Task { @MainActor in
                             let previous = self.settings.uploads.first(where: { $0.id == job.id })
                             let resourceChanged = previous?.upload != raw["upload"] as? String || previous?.file_id != raw["file_id"] as? String
                             // HEAD recovers durable offsets; only resource identity must be checkpointed immediately.
-                            self.update(job.id, persist: resourceChanged) { item in
+                            self.update(job.id, persist: resourceChanged || raw["directory"] != nil) { item in
                                 item.upload = raw["upload"] as? String ?? item.upload
                                 item.file_id = raw["file_id"] as? String ?? item.file_id
                                 item.offset = (raw["offset"] as? NSNumber)?.int64Value ?? item.offset
+                                if let directory = raw["directory"] { item.directory = try? JSONSerialization.data(withJSONObject: directory) }
                             }
                         }
                     } as? [String: Any] ?? [:]
-                    update(job.id) { $0.upload = result["upload"] as? String ?? $0.upload; $0.file_id = result["file_id"] as? String ?? $0.file_id; $0.offset = job.size }
+                    update(job.id) {
+                        $0.upload = result["upload"] as? String ?? $0.upload
+                        $0.file_id = result["file_id"] as? String ?? $0.file_id; $0.offset = job.size
+                        if let directory = result["directory"] { $0.directory = try? JSONSerialization.data(withJSONObject: directory) }
+                    }
                     guard settings.uploads.first(where: { $0.id == job.id })?.status == "uploading" else { continue }
                     update(job.id) { $0.status = "uploaded" }
                     await makeLink(job.id)
@@ -339,7 +357,11 @@ struct UploadCompletion: Equatable {
         guard connected else { notice = "Для отмены загрузки подключите тот же аккаунт"; return }
         update(id) { $0.status = "cancelling" }
         Task {
-            do { _ = try await request("cancel", ["job": job.checkpoint]); settings.uploads.removeAll { $0.id == id }; save() }
+            do {
+                let operation = job.directory == nil ? "cancel" : "cancel_directory"
+                let input = job.directory == nil ? ["job": job.checkpoint] : ["directory_job": job.directoryCheckpoint]
+                _ = try await request(operation, input); settings.uploads.removeAll { $0.id == id }; save()
+            }
             catch { update(id) { $0.status = "paused"; $0.message = "Отмена не подтверждена: " + error.localizedDescription } }
         }
     }

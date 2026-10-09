@@ -14,7 +14,7 @@ from .state import StateStore
 
 APP_ID = "io.github.panktrue.ShareFile"
 LABELS = {"queued": "В очереди", "uploading": "Загружается", "paused": "На паузе",
-          "uploaded": "Файл загружен", "sharing": "Создаётся ссылка", "done": "Готово",
+          "uploaded": "Загрузка завершена", "sharing": "Создаётся ссылка", "done": "Готово",
           "uncertain": "Проверьте ссылки в Web UI", "error": "Нужна ваша помощь", "cancelling": "Отменяется"}
 
 
@@ -166,12 +166,13 @@ class Application(Gtk.Application):
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=12)
         tools = Gtk.Box(spacing=8)
         self.add_button = self.button("Загрузить и поделиться…", self.choose_files, tools)
+        self.upload_folder_button = self.button("Загрузить папку…", self.choose_directory, tools)
         self.button("Пауза всех", self.controller.pause_all, tools)
         self.button("Удалить завершённые", self.controller.clear_finished, tools)
         page.pack_start(tools, False, False, 0)
         self.rows = Gtk.ListStore(str, str, str, int, str, str)
         self.tree = Gtk.TreeView(model=self.rows)
-        for title, column in (("Файл", 1), ("Размер", 2), ("Состояние", 4)):
+        for title, column in (("Файл или папка", 1), ("Размер", 2), ("Состояние", 4)):
             renderer = Gtk.CellRendererText()
             renderer.set_property("ellipsize", 3)
             item = Gtk.TreeViewColumn(title, renderer, text=column)
@@ -311,7 +312,7 @@ class Application(Gtk.Application):
                            "copy": bool(job["link"]), "new": connected and status in ("done", "uploaded", "uncertain"),
                            "revoke": connected and bool(job["share_id"])}[key]
             button.set_sensitive(enabled and (not busy or key == "pause"))
-        self.detail.set_text(job["message"] if job else "Перетащите файлы сюда или выберите их через кнопку загрузки")
+        self.detail.set_text(job["message"] if job else "Перетащите файлы или папку сюда. Для папки создаётся одна ссылка")
 
     def choose_files(self):
         dialog = Gtk.FileChooserDialog(title="Загрузить и поделиться", transient_for=self.window,
@@ -333,6 +334,16 @@ class Application(Gtk.Application):
         except Exception as error:
             self.message(safe_message(error))
             Gtk.drag_finish(context, False, False, timestamp)
+
+    def choose_directory(self):
+        dialog = Gtk.FileChooserDialog(title="Загрузить папку целиком", transient_for=self.window,
+                                       action=Gtk.FileChooserAction.SELECT_FOLDER)
+        dialog.add_buttons("Отмена", Gtk.ResponseType.CANCEL, "Загрузить", Gtk.ResponseType.OK)
+        dialog.set_select_multiple(True)
+        dialog.set_local_only(True)
+        if dialog.run() == Gtk.ResponseType.OK:
+            self.controller.add_files(dialog.get_filenames())
+        dialog.destroy()
 
     def clipboard(self, links):
         try:
@@ -356,8 +367,8 @@ class Application(Gtk.Application):
         self.controller.set_notice(text)
         if batch["notify"]:
             # Notification contains names and copy status, never URLs or credentials.
-            files = batch["names"][0] if len(batch["names"]) == 1 else f"Загружено файлов: {len(batch['names'])}"
-            self.notification("Файл загружен" if len(batch["names"]) == 1 else "Файлы загружены", files + "\n" + text)
+            files = batch["names"][0] if len(batch["names"]) == 1 else f"Загружено объектов: {len(batch['names'])}"
+            self.notification("Загрузка завершена", files + "\n" + text)
 
     def notification(self, title, body):
         notification = Gio.Notification.new(title)

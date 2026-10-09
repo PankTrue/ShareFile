@@ -207,6 +207,103 @@ class BackendTests(unittest.TestCase):
         children = json.loads(self.http("GET", "/api/v1/folders?parent_id=" + self.folder, headers={"Authorization": "Bearer " + self.token})[2])
         self.assertEqual(len(children), 1)
 
+    def directory_source(self):
+        source = self.root / "Проект 日本語"
+        (source / "a").mkdir(parents=True)
+        (source / "b").mkdir()
+        (source / "empty/nested").mkdir(parents=True)
+        (source / "a/report.txt").write_bytes(os.urandom(1048576 + 131))
+        (source / "b/report.txt").write_bytes(b"different report")
+        (source / "zero.txt").write_bytes(b"")
+        return source
+
+    def check_directory(self, result, source):
+        self.assertEqual(result["status"], "done")
+        self.assertEqual(result["offset"], result["size"])
+        self.assertEqual(self.http("GET", urlsplit(result["link"]).path)[0], 200)
+        for entry in result["directory"]["files"]:
+            self.assertTrue(entry["complete"])
+            code, _, body = self.http("GET", urlsplit(result["link"]).path + "/nodes/" + entry["job"]["file_id"])
+            self.assertEqual(code, 200)
+            self.assertEqual(hashlib.sha256(body).digest(), hashlib.sha256((source / entry["path"]).read_bytes()).digest())
+        ids = {"": result["file_id"]}
+        for folder in result["directory"]["folders"]:
+            ids[folder["path"]] = folder["id"]
+            node = json.loads(self.http("GET", "/api/v1/nodes/" + folder["id"], headers=self.auth)[2])
+            self.assertEqual(node["parent_id"], ids[folder["path"].rpartition("/")[0]])
+        self.assertIn("empty/nested", ids)
+        self.assertEqual(json.loads(self.http("GET", "/api/v1/folders?parent_id=" + ids["empty/nested"], headers=self.auth)[2]), [])
+
+    def test_directory_is_one_queue_item_link_and_completion_with_empty_folders(self):
+        source = self.directory_source()
+        controller = self.new_controller()
+        controller.add_files([str(source)]).result(timeout=20)
+        self.wait_idle()
+        result, = controller.snapshot()["jobs"]
+        self.check_directory(result, source)
+        completion, = self.completions
+        self.assertEqual(len(completion["links"]), 1)
+        saved, = self.store.load()["jobs"]
+        self.assertEqual(saved["directory"], result["directory"])
+        self.assertNotIn(self.token, self.store.path.read_text())
+        self.assertNotIn("/s/", self.store.path.read_text())
+
+    def test_directory_lost_creates_and_restart_resume_keep_original_ids(self):
+        source = self.directory_source()
+        prepared = self.call("prepare_directory", source=str(source), parent=self.folder)
+        # The backend accepts requests; the client never receives these checkpoints.
+        def create(parent, name, key):
+            headers = {**self.auth, "Idempotency-Key": key}
+            code, _, body = self.http("POST", "/api/v1/folders", {"parent_id": parent, "name": name}, headers)
+            self.assertEqual(code, 201)
+            return json.loads(body)["id"]
+        ids = {"": create(self.folder, source.name, prepared["id"])}
+        for folder in prepared["directory"]["folders"]:
+            ids[folder["path"]] = create(ids[folder["path"].rpartition("/")[0]], folder["path"].split("/")[-1], folder["key"])
+        child = prepared["directory"]["files"][0]
+        job = child["job"]
+        tus = {"Authorization": "Bearer " + self.token, "Tus-Resumable": "1.0.0",
+               "Upload-Length": str(job["size"]), "Idempotency-Key": job["id"],
+               "Upload-Metadata": "filename " + base64.b64encode(job["name"].encode()).decode()
+               + ",folder_id " + base64.b64encode(ids[child["path"].rpartition("/")[0]].encode()).decode()}
+        code, response, _ = self.http("POST", "/api/v1/uploads", headers=tus)
+        self.assertEqual(code, 201)
+        file_id = response["sharefile-file-id"]
+        patch = {"Authorization": "Bearer " + self.token, "Tus-Resumable": "1.0.0", "Upload-Offset": "0",
+                 "X-HTTP-Method-Override": "PATCH", "Content-Type": "application/offset+octet-stream"}
+        self.assertEqual(self.http("POST", urlsplit(response["location"]).path, (source / child["path"]).read_bytes()[:70000], patch)[0], 204)
+        controller = self.new_controller()
+        prepared.update(status="uploading", message="", batch=prepared["id"], days=7, never=False, share_id="", link="")
+        controller._commit(lambda state: state["jobs"].append(prepared))
+        controller.close().result(timeout=10)
+        self.controller = None
+        self.stop_backend()
+        self.start_backend()
+        controller = self.new_controller()
+        self.assertEqual(controller.snapshot()["jobs"][0]["status"], "paused")
+        controller.resume(prepared["id"]).result(timeout=5)
+        self.wait_idle()
+        result, = controller.snapshot()["jobs"]
+        self.check_directory(result, source)
+        self.assertEqual(result["file_id"], ids[""])
+        self.assertEqual(result["directory"]["files"][0]["job"]["file_id"], file_id)
+        children = json.loads(self.http("GET", "/api/v1/folders?parent_id=" + self.folder, headers=self.auth)[2])
+        self.assertEqual(len(children), 1)
+
+    def test_directory_cancel_recovers_root_and_rejects_changed_source(self):
+        source = self.directory_source()
+        prepared = self.call("prepare_directory", source=str(source), parent=self.folder)
+        (source / "added.txt").write_text("changed")
+        with self.assertRaises(ClientError):
+            self.call("upload_directory", directory_job=prepared)
+        self.assertEqual(json.loads(self.http("GET", "/api/v1/folders?parent_id=" + self.folder, headers=self.auth)[2]), [])
+        code, _, body = self.http("POST", "/api/v1/folders", {"parent_id": self.folder, "name": source.name},
+                                 {**self.auth, "Idempotency-Key": prepared["id"]})
+        self.assertEqual(code, 201)
+        root_id = json.loads(body)["id"]
+        self.call("cancel_directory", directory_job=prepared)
+        self.assertEqual(self.http("GET", "/api/v1/nodes/" + root_id, headers=self.auth)[0], 404)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -15,6 +15,9 @@ public sealed record ShareIdentity(string Id);
 public sealed record ShareLink(string Url, ShareIdentity Share);
 public sealed record ShareOptions(int Days = 7, bool Never = false, string Password = "");
 public sealed record UploadHead(long Offset, long Length, long ChunkSize, string FileId, string State);
+public sealed record DirectoryFolder(string Path, string Key, string Id = "");
+public sealed record DirectoryFile(string Path, UploadJob Job, bool Complete = false);
+public sealed record DirectoryManifest(IReadOnlyList<DirectoryFolder> Folders, IReadOnlyList<DirectoryFile> Files);
 
 public enum UploadStatus { Queued, Uploading, Paused, Uploaded, Sharing, Uncertain, Done, Error, Cancelling }
 
@@ -31,6 +34,7 @@ public sealed record UploadJob
     public string Upload { get; init; } = "";
     public string FileId { get; init; } = "";
     public long Offset { get; init; }
+    public DirectoryManifest? Directory { get; init; }
     public UploadStatus Status { get; init; } = UploadStatus.Queued;
     public string Message { get; init; } = "";
     public string Batch { get; init; } = "";
@@ -84,6 +88,8 @@ public interface IShareFileApi
     Task<Session> MeAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<Node>> FoldersAsync(string parent, CancellationToken cancellationToken);
     Task<Node> NodeAsync(string id, CancellationToken cancellationToken);
+    Task<Node> CreateFolderAsync(string parent, string name, string key, CancellationToken cancellationToken);
+    Task TrashNodeAsync(string id, CancellationToken cancellationToken);
     Task<UploadJob> CreateUploadAsync(UploadJob job, CancellationToken cancellationToken);
     Task<UploadHead> HeadAsync(string path, CancellationToken cancellationToken);
     Task PatchAsync(string path, long offset, Stream source, long count, CancellationToken cancellationToken);

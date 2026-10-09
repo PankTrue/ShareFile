@@ -42,7 +42,7 @@ func (a *App) createFolder(w http.ResponseWriter, r *http.Request, u identity.Ac
 	if !decode(w, r, &in) {
 		return
 	}
-	out, err := a.Files.CreateFolder(r.Context(), u.ID, in.ParentID, in.Name)
+	out, err := a.Files.CreateFolderOnce(r.Context(), u.ID, in.ParentID, in.Name, r.Header.Get("Idempotency-Key"))
 	if err != nil {
 		fail(w, r, err)
 		return

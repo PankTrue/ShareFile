@@ -1,4 +1,5 @@
 import copy
+import os
 from concurrent.futures import ThreadPoolExecutor
 import secrets
 import socket
@@ -133,7 +134,7 @@ class Controller:
             self.credentials.write(origin, token)
         self._commit(lambda state: state.update(settings=settings))
         self.token, self.password = token, password
-        self.notice = "Linux подключён. Можно загружать файлы"
+        self.notice = "Linux подключён. Можно загружать файлы и папки"
 
     def connect(self, origin):
         self._pair_stop.clear()
@@ -225,16 +226,17 @@ class Controller:
     def _add(self, paths):
         if not self.token:
             if len(self._pending_files) + len(paths) > 100:
-                raise ClientError("Можно выбрать не более 100 файлов")
+                raise ClientError("Можно выбрать не более 100 файлов или папок")
             self._pending_files.extend(paths)
-            raise ClientError("Подключите хранилище. Выбранные файлы добавятся после подтверждения")
+            raise ClientError("Подключите хранилище. Выбранные файлы и папки добавятся после подтверждения")
         settings = self.state["settings"]
         if len(self.state["jobs"]) + len(paths) > 100:
-            raise ClientError("В очереди может быть не более 100 файлов. Удалите завершённые записи")
+            raise ClientError("В очереди может быть не более 100 файлов или папок. Удалите завершённые записи")
         batch, prepared, errors = secrets.token_urlsafe(32), [], []
         for path in paths:
             try:
-                job = self._request("prepare", source=path, parent=settings["folder"])
+                operation = "prepare_directory" if os.path.isdir(path) else "prepare"
+                job = self._request(operation, source=path, parent=settings["folder"])
                 job.update(status="queued", message="", batch=batch, days=settings["days"],
                            never=settings["never"], share_id="", link="")
                 validate_job(job)
@@ -244,7 +246,7 @@ class Controller:
         if prepared:
             self._commit(lambda state: state["jobs"].extend(prepared))
         if errors:
-            self.notice = f"Не добавлено файлов: {len(errors)}. " + errors[0]
+            self.notice = f"Не добавлено объектов: {len(errors)}. " + errors[0]
 
     def _pump(self):
         with self._lock:
@@ -267,9 +269,13 @@ class Controller:
             job = self._job(identity)
 
             def checkpoint(progress):
-                self._update(identity, **{key: progress[key] for key in ("upload", "file_id", "offset")})
-            result = self._request("upload", job={key: job[key] for key in CHECKPOINT},
-                                   progress=checkpoint, stop=stop)
+                fields = {key: progress.get(key, "" if key != "offset" else 0)
+                          for key in ("upload", "file_id", "offset")}
+                if "directory" in progress:
+                    fields["directory"] = progress["directory"]
+                self._update(identity, **fields)
+            operation, parameters = self._transfer("upload", job)
+            result = self._request(operation, **parameters, progress=checkpoint, stop=stop)
             checkpoint(result)
             with self._lock:
                 if stop.is_set() or self._job(identity)["status"] == "paused":
@@ -364,12 +370,21 @@ class Controller:
                     raise ClientError("Для отмены серверной загрузки нужно подключение")
                 self._update(identity, status="cancelling")
                 try:
-                    self._request("cancel", job={key: job[key] for key in CHECKPOINT})
+                    operation, parameters = self._transfer("cancel", job)
+                    self._request(operation, **parameters)
                 except Exception:
                     self._update(identity, status="paused", message="Отмена не подтверждена. Повторите отмену")
                     raise
             self._commit(lambda state: state.update(jobs=[job for job in state["jobs"] if job["id"] != identity]))
         return self._submit(remove)
+
+    @staticmethod
+    def _transfer(operation, job):
+        checkpoint = {key: job[key] for key in CHECKPOINT}
+        if job.get("directory") is not None:
+            checkpoint["directory"] = job["directory"]
+            return operation + "_directory", {"directory_job": checkpoint}
+        return operation, {"job": checkpoint}
 
     def clear_finished(self):
         return self._submit(lambda: self._commit(lambda state: state.update(
