@@ -83,6 +83,30 @@ function observe(page) {
     if (/Refused|violat.*Content Security/i.test(message.text())) errors.push(message.text());
   });
 }
+async function downloadArchive(page, filename, expected) {
+  const pending = page.waitForEvent('download');
+  await page.getByRole('link', { name: 'Скачать всё (ZIP)', exact: true }).click();
+  const download = await pending;
+  assert.equal(download.suggestedFilename(), filename);
+  assert.equal(await download.failure(), null);
+  const result = spawnSync(
+    'python3',
+    [
+      '-c',
+      'import hashlib,json,sys,zipfile\nwith zipfile.ZipFile(sys.argv[1]) as z:\n assert z.testzip() is None\n print(json.dumps({i.filename: hashlib.sha256(z.read(i)).hexdigest() for i in z.infolist()}))',
+      await download.path(),
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const hashes = Object.fromEntries(
+    Object.entries(expected).map(([name, data]) => [
+      name,
+      createHash('sha256').update(data).digest('hex'),
+    ]),
+  );
+  assert.deepEqual(JSON.parse(result.stdout), hashes);
+}
 try {
   for (let i = 0; i < 100; i++) {
     if (process.exitCode !== null) throw new Error('Backend exited: ' + serverError);
@@ -316,6 +340,7 @@ try {
   const guest = await anonymous.newPage();
   observe(guest);
   assert.equal((await guest.goto(folderURL)).status(), 401);
+  assert.equal((await anonymous.request.get(folderURL + '/archive')).status(), 401);
   await guest.getByLabel('Пароль', { exact: true }).fill(password);
   const unlockResponse = guest.waitForResponse(
     (response) => response.url() === folderURL + '/unlock',
@@ -328,6 +353,7 @@ try {
     `Unlock failed with Origin=${unlocked.request().headers().origin}`,
   );
   await visible(guest.getByRole('heading', { name: 'В этой папке пока нет файлов' }));
+  await downloadArchive(guest, 'Для друзей.zip', { 'Для друзей/': '' });
   const session = await (await userContext.request.get(publicURL + '/api/v1/me')).json();
   const mutationHeaders = { 'X-CSRF-Token': session.csrf_token };
   const folderResponse = await userContext.request.post(publicURL + '/api/v1/folders', {
@@ -336,6 +362,11 @@ try {
   });
   assert.equal(folderResponse.status(), 201);
   const nestedFolder = await folderResponse.json();
+  const emptyFolderResponse = await userContext.request.post(publicURL + '/api/v1/folders', {
+    data: { parent_id: nestedFolder.id, name: 'Пустая' },
+    headers: mutationHeaders,
+  });
+  assert.equal(emptyFolderResponse.status(), 201);
   async function uploadFixture(name, data) {
     const created = await userContext.request.post(publicURL + '/api/v1/uploads', {
       headers: {
@@ -366,10 +397,27 @@ try {
     'base64',
   );
   const photoID = await uploadFixture('фото.png', imageData);
-  await uploadFixture('архив.bin', Buffer.from([0, 1, 2, 3, 4]));
+  const binaryData = Buffer.from([0, 1, 2, 3, 4]);
+  await uploadFixture('архив.bin', binaryData);
+  const nestedArchive = {
+    'Фото и текст/': '',
+    'Фото и текст/Пустая/': '',
+    'Фото и текст/заметки.html': note,
+    'Фото и текст/фото.png': imageData,
+    'Фото и текст/архив.bin': binaryData,
+  };
+  const rootArchive = {
+    'Для друзей/': '',
+    ...Object.fromEntries(
+      Object.entries(nestedArchive).map(([name, data]) => ['Для друзей/' + name, data]),
+    ),
+  };
   await guest.reload();
+  await downloadArchive(guest, 'Для друзей.zip', rootArchive);
+  await downloadArchive(user, 'Для друзей.zip', rootArchive);
   await guest.getByRole('link', { name: 'Фото и текст', exact: false }).click();
   await visible(guest.getByRole('heading', { name: 'Фото и текст', exact: true }));
+  await downloadArchive(guest, 'Фото и текст.zip', nestedArchive);
   assert.equal(
     await guest
       .getByRole('navigation', { name: 'Путь в общей папке' })
@@ -420,6 +468,11 @@ try {
     { headers: mutationHeaders },
   );
   assert.equal(revoked.status(), 204);
+  assert.equal((await anonymous.request.get(folderURL + '/archive')).status(), 404);
+  assert.equal(
+    (await anonymous.request.get(folderURL + `/nodes/${nestedFolder.id}/archive`)).status(),
+    404,
+  );
   assert.equal((await anonymous.request.get(imagePreviewURL)).status(), 404);
   assert.equal((await guest.reload()).status(), 404);
   // A genuine browser directory drop (CDP file drag), including empty directories.
@@ -526,7 +579,7 @@ try {
   assert.equal((await publicAdmin.request.get(publicURL + '/api/v1/admin/users')).status(), 404);
   assert.deepEqual(errors, [], 'Browser errors/CSP violations');
   console.log(
-    'Browser acceptance passed: auth, private admin, users/groups/ACL, reader/manager UI, chunked upload and SHA-256, sharing, rename/move/replace/revoke/trash/restore, lost-response resume, device pairing/revocation, settings/import, password-protected live folder, previews, real directory drag/drop with empty folders and duplicate basenames, one folder link, directory picker, mobile layout, logout.',
+    'Browser acceptance passed: auth, private admin, users/groups/ACL, reader/manager UI, chunked upload and SHA-256, sharing, rename/move/replace/revoke/trash/restore, lost-response resume, device pairing/revocation, settings/import, password-protected live folder, previews, streaming ZIP downloads with nested and empty folders, real directory drag/drop with empty folders and duplicate basenames, one folder link, directory picker, mobile layout, logout.',
   );
 } catch (error) {
   if (browser)

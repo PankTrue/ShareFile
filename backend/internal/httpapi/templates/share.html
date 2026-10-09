@@ -28,7 +28,7 @@
       </nav>
       <div class="page-heading">
         <div><p class="eyebrow">{{if eq .Node.Kind "folder"}}ОБЩАЯ ПАПКА{{else}}ПРЕДПРОСМОТР ФАЙЛА{{end}}</p><h1>{{.Title}}</h1><p class="muted">{{if eq .Node.Kind "folder"}}Открывайте вложенные папки, просматривайте фото и текст или скачивайте файлы.{{else}}{{size .Node.Size}}{{end}}</p></div>
-        {{if .DownloadURL}}{{if eq .Node.Kind "file"}}<a class="button primary" href="{{.DownloadURL}}">Скачать файл</a>{{end}}{{end}}
+        {{if .DownloadURL}}<a class="button primary" href="{{.DownloadURL}}">{{if eq .Node.Kind "folder"}}Скачать всё (ZIP){{else}}Скачать файл{{end}}</a>{{end}}
       </div>
       {{if .BackURL}}<a class="back-link" href="{{.BackURL}}">← Вернуться в папку</a>{{end}}
       {{if eq .Node.Kind "folder"}}

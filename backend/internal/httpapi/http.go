@@ -145,6 +145,7 @@ func (a *App) handler(private bool) http.Handler {
 		noContent(w, r, a.Files.Delete(r.Context(), u.ID, r.PathValue("id")))
 	}))
 	mux.HandleFunc("GET /api/v1/nodes/{id}/content", a.auth(false, a.download))
+	mux.HandleFunc("GET /api/v1/nodes/{id}/archive", a.auth(false, a.downloadArchive))
 	mux.HandleFunc("GET /api/v1/nodes/{id}/grants", a.auth(false, a.namedGrants))
 	mux.HandleFunc("GET /api/v1/nodes/{id}/principals", a.auth(false, a.principals))
 	mux.HandleFunc("PUT /api/v1/nodes/{id}/grants", a.auth(false, func(w http.ResponseWriter, r *http.Request, u identity.Actor) {
@@ -195,6 +196,8 @@ func (a *App) handler(private bool) http.Handler {
 	mux.HandleFunc("GET /s/{token}/nodes/{id}", a.guest)
 	mux.HandleFunc("GET /s/{token}/nodes/{id}/view", a.guestView)
 	mux.HandleFunc("GET /s/{token}/nodes/{id}/preview", a.guestPreview)
+	mux.HandleFunc("GET /s/{token}/archive", a.guestArchive)
+	mux.HandleFunc("GET /s/{token}/nodes/{id}/archive", a.guestArchive)
 	mux.HandleFunc("POST /s/{token}/unlock", a.unlock)
 	mux.HandleFunc("GET /share-assets/style.css", shareStyles)
 	if private {
@@ -225,7 +228,10 @@ func (a *App) handler(private bool) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
-			if recover() != nil {
+			if err := recover(); err != nil {
+				if err == http.ErrAbortHandler {
+					panic(err)
+				}
 				slog.Error("HTTP handler panic", "route", r.Pattern)
 				fail(w, r, errors.New("internal error"))
 			}

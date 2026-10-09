@@ -3109,6 +3109,338 @@
         ],
         "x-private-listener-only": true
       }
+    },
+    "/api/v1/nodes/{id}/archive": {
+      "get": {
+        "summary": "Download folder as streaming ZIP",
+        "operationId": "get_api_v1_nodes_id_archive",
+        "tags": [
+          "Files"
+        ],
+        "description": "Stream the entire requested folder as one ZIP, including a top-level directory named after the folder, all nested files and empty directories, independent of listing pagination or filters. The archive is generated directly in the response with fast compression; no temporary archive or file-content copy is created on disk. Enumeration is incremental; one file is open at a time and the copy buffer is 32 KiB. The ZIP central directory retains per-entry metadata in memory. This is a live traversal, not an atomic snapshot. The response has no precomputed Content-Length or ETag and no Range/resume support (Range is ignored, GET returns 200). One configured download slot is held until completion or cancellation; 429 when slots are occupied. A file node returns 400. Before streaming, failures use the usual error response; after ZIP bytes start, an I/O error, cancellation or authorization loss aborts the HTTP response without finalizing a partial archive. Restart interrupted downloads. Requires reader access to the folder. Access and subtree membership are rechecked during traversal.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Streaming ZIP attachment; length is unknown until completion",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Attachment filename is the folder name plus .zip (UTF-8 supported)"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "none"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "head": {
+        "summary": "Get folder ZIP download headers",
+        "operationId": "head_api_v1_nodes_id_archive",
+        "tags": [
+          "Files"
+        ],
+        "description": "Same initial authorization and download-slot checks as GET. Returns ZIP attachment headers without reading file objects, enumerating the tree or building an archive. Content-Length is omitted because the ZIP length is unknown.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ZIP download headers without a body",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Attachment filename is the folder name plus .zip (UTF-8 supported)"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "none"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/s/{token}/archive": {
+      "get": {
+        "summary": "Download folder as streaming ZIP",
+        "operationId": "get_s_token_archive",
+        "tags": [
+          "Public shares"
+        ],
+        "description": "Stream the entire requested folder as one ZIP, including a top-level directory named after the folder, all nested files and empty directories, independent of listing pagination or filters. The archive is generated directly in the response with fast compression; no temporary archive or file-content copy is created on disk. Enumeration is incremental; one file is open at a time and the copy buffer is 32 KiB. The ZIP central directory retains per-entry metadata in memory. This is a live traversal, not an atomic snapshot. The response has no precomputed Content-Length or ETag and no Range/resume support (Range is ignored, GET returns 200). One configured download slot is held until completion or cancellation; 429 when slots are occupied. A file node returns 400. Before streaming, failures use the usual error response; after ZIP bytes start, an I/O error, cancellation or authorization loss aborts the HTTP response without finalizing a partial archive. Restart interrupted downloads. Requires the same token/password cookie as the share, including expiry, revocation and creator-permission checks. Every entry must remain inside the selected folder and the shared subtree; authorization is rechecked during traversal. A locked share returns the password form.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Streaming ZIP attachment; length is unknown until completion",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Attachment filename is the folder name plus .zip (UTF-8 supported)"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "none"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "description": "Password form",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      },
+      "head": {
+        "summary": "Get folder ZIP download headers",
+        "operationId": "head_s_token_archive",
+        "tags": [
+          "Public shares"
+        ],
+        "description": "Same initial authorization and download-slot checks as GET. Returns ZIP attachment headers without reading file objects, enumerating the tree or building an archive. Content-Length is omitted because the ZIP length is unknown.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ZIP download headers without a body",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Attachment filename is the folder name plus .zip (UTF-8 supported)"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "none"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "description": "Share password required; no response body"
+          }
+        },
+        "security": []
+      }
+    },
+    "/s/{token}/nodes/{id}/archive": {
+      "get": {
+        "summary": "Download folder as streaming ZIP",
+        "operationId": "get_s_token_nodes_id_archive",
+        "tags": [
+          "Public shares"
+        ],
+        "description": "Stream the entire requested folder as one ZIP, including a top-level directory named after the folder, all nested files and empty directories, independent of listing pagination or filters. The archive is generated directly in the response with fast compression; no temporary archive or file-content copy is created on disk. Enumeration is incremental; one file is open at a time and the copy buffer is 32 KiB. The ZIP central directory retains per-entry metadata in memory. This is a live traversal, not an atomic snapshot. The response has no precomputed Content-Length or ETag and no Range/resume support (Range is ignored, GET returns 200). One configured download slot is held until completion or cancellation; 429 when slots are occupied. A file node returns 400. Before streaming, failures use the usual error response; after ZIP bytes start, an I/O error, cancellation or authorization loss aborts the HTTP response without finalizing a partial archive. Restart interrupted downloads. Requires the same token/password cookie as the share, including expiry, revocation and creator-permission checks. Every entry must remain inside the selected folder and the shared subtree; authorization is rechecked during traversal. A locked share returns the password form.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Streaming ZIP attachment; length is unknown until completion",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Attachment filename is the folder name plus .zip (UTF-8 supported)"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "none"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "description": "Password form",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      },
+      "head": {
+        "summary": "Get folder ZIP download headers",
+        "operationId": "head_s_token_nodes_id_archive",
+        "tags": [
+          "Public shares"
+        ],
+        "description": "Same initial authorization and download-slot checks as GET. Returns ZIP attachment headers without reading file objects, enumerating the tree or building an archive. Content-Length is omitted because the ZIP length is unknown.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ZIP download headers without a body",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Attachment filename is the folder name plus .zip (UTF-8 supported)"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "none"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "description": "Share password required; no response body"
+          }
+        },
+        "security": []
+      }
     }
   },
   "components": {

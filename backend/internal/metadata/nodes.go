@@ -39,6 +39,30 @@ func ScanNode(row interface{ Scan(...any) error }) (Node, error) {
 func GetNode(ctx context.Context, q Queries, id string) (Node, error) {
 	return ScanNode(q.QueryRowContext(ctx, "SELECT "+NodeColumns+" FROM nodes WHERE id=?", id))
 }
+
+// GetSubtreeNode resolves only live nodes within root, including root itself.
+// Callers must authorize access to root before using this boundary check.
+func GetSubtreeNode(ctx context.Context, q Queries, root, id string) (Node, error) {
+	if id == "" {
+		id = root
+	}
+	n, err := GetNode(ctx, q, id)
+	if err != nil {
+		return n, err
+	}
+	if n.DeletedAt != nil {
+		return n, ErrNotFound
+	}
+	var count int
+	err = q.QueryRowContext(ctx, `WITH RECURSIVE ancestors(id,parent_id) AS (
+ SELECT id,parent_id FROM nodes WHERE id=? AND deleted_at IS NULL UNION ALL
+ SELECT n.id,n.parent_id FROM nodes n JOIN ancestors a ON n.id=a.parent_id WHERE n.deleted_at IS NULL
+ ) SELECT count(*) FROM ancestors WHERE id=?`, id, root).Scan(&count)
+	if err == nil && count != 1 {
+		err = ErrNotFound
+	}
+	return n, err
+}
 func ValidName(name string) bool {
 	if len(name) == 0 || len(name) > 240 || !utf8.ValidString(name) || strings.TrimSpace(name) != name || name == "." || name == ".." || strings.ContainsAny(name, "/\\") {
 		return false

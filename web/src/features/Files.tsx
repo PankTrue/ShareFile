@@ -109,6 +109,12 @@ export function Files({
             : 'Сохраняйте файлы на своём диске и делитесь ими по ссылке.'
         }
       >
+        {folderID && current.value && (
+          <a className="button secondary" href={`/api/v1/nodes/${idPath(folderID)}/archive`}>
+            <Icon name="download" />
+            Скачать всё (ZIP)
+          </a>
+        )}
         {editor && (
           <>
             <Button icon="plus" onClick={() => setDialog({ kind: 'new' })}>

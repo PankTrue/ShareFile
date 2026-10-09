@@ -125,28 +125,7 @@ func (s *Service) ResolveNode(ctx context.Context, sh Share, id string) (metadat
 	if err := s.Files.Disk.Check(); err != nil {
 		return metadata.Node{}, err
 	}
-	if id == "" {
-		id = sh.NodeID
-	}
-	n, err := metadata.GetNode(ctx, s.Store.DB, id)
-	if err != nil {
-		return n, err
-	}
-	if n.DeletedAt != nil {
-		return n, metadata.ErrNotFound
-	}
-	var count int
-	err = s.Store.DB.QueryRowContext(ctx, `WITH RECURSIVE ancestors(id,parent_id) AS (
- SELECT id,parent_id FROM nodes WHERE id=? AND deleted_at IS NULL UNION ALL
- SELECT n.id,n.parent_id FROM nodes n JOIN ancestors a ON n.id=a.parent_id WHERE n.deleted_at IS NULL
- ) SELECT count(*) FROM ancestors WHERE id=?`, id, sh.NodeID).Scan(&count)
-	if err != nil {
-		return n, err
-	}
-	if count != 1 {
-		return n, metadata.ErrNotFound
-	}
-	return n, nil
+	return metadata.GetSubtreeNode(ctx, s.Store.DB, sh.NodeID, id)
 }
 func (s *Service) List(ctx context.Context, user, node string, limit, offset int) ([]Share, error) {
 	if limit < 1 || limit > 100 || offset < 0 {

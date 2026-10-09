@@ -113,6 +113,9 @@ func (a *App) sharePage(r *http.Request, sh shares.Share, n metadata.Node) (shar
 	}
 	data.DownloadURL = data.Base + "/nodes/" + n.ID
 	data.ContentURL = data.DownloadURL + "/preview"
+	if n.Kind == "folder" {
+		data.DownloadURL += "/archive"
+	}
 	return data, nil
 }
 
