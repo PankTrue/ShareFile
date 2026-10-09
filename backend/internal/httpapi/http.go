@@ -25,6 +25,7 @@ import (
 	"sharefile/backend/internal/identity"
 	"sharefile/backend/internal/metadata"
 	"sharefile/backend/internal/security"
+	"sharefile/backend/internal/settings"
 	"sharefile/backend/internal/shares"
 )
 
@@ -35,6 +36,7 @@ type App struct {
 	Access                     *access.Service
 	Files                      *files.Service
 	Shares                     *shares.Service
+	Settings                   *settings.Manager
 	uploadSlots, downloadSlots chan struct{}
 	mu                         sync.Mutex
 	attempts                   map[string]bucket

@@ -18,7 +18,8 @@ body {
 }
 button,
 input,
-select {
+select,
+.server-settings textarea {
   font: inherit;
 }
 button,
@@ -913,7 +914,8 @@ label {
   margin-bottom: 17px;
 }
 input,
-select {
+select,
+.server-settings textarea {
   width: 100%;
   display: block;
   margin-top: 7px;
@@ -931,7 +933,8 @@ input::placeholder {
   color: #a0aabd;
 }
 input:focus,
-select:focus {
+select:focus,
+.server-settings textarea:focus {
   border-color: #7da6e9;
   box-shadow: 0 0 0 3px #e8f0ff;
 }
@@ -1196,6 +1199,33 @@ input[type='file']::file-selector-button {
 }
 .settings-card > .hint {
   margin-bottom: 0;
+  margin-top: 18px;
+}
+.server-settings fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.server-settings .form-grid {
+  margin-top: 18px;
+}
+.server-settings label {
+  min-width: 0;
+}
+.server-settings .hint {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.server-settings .settings-card > label {
+  display: block;
+}
+.server-settings textarea {
+  resize: vertical;
+}
+.settings-save .page-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
   margin-top: 18px;
 }
 .pairing-card {

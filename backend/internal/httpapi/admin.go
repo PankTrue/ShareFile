@@ -9,6 +9,7 @@ import (
 )
 
 func (a *App) adminRoutes(mux *http.ServeMux) {
+	a.configurationRoutes(mux)
 	mux.HandleFunc("GET /api/v1/admin/users", a.auth(true, func(w http.ResponseWriter, r *http.Request, u identity.Actor) {
 		out, err := a.Identity.Users(r.Context())
 		respond(w, r, out, err)

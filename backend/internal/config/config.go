@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -55,8 +56,8 @@ func (c Config) Validate() error {
 	if c.PublicAddr == c.AdminAddr {
 		return fmt.Errorf("listeners must have different addresses")
 	}
-	if c.UploadSlots < 1 || c.DownloadSlots < 1 || c.ChunkBytes < 1 {
-		return fmt.Errorf("transfer limits must be positive")
+	if c.UploadSlots < 1 || c.UploadSlots > 1024 || c.DownloadSlots < 1 || c.DownloadSlots > 1024 || c.ChunkBytes < 1 || c.ChunkBytes > 1<<30 || c.ReserveBytes > 1<<53-1 {
+		return fmt.Errorf("transfer slots must be 1..1024, chunk_bytes 1..1073741824, reserve_bytes 0..9007199254740991")
 	}
 	for _, raw := range []string{c.PublicURL, c.AdminURL} {
 		u, err := url.Parse(raw)
@@ -68,9 +69,13 @@ func (c Config) Validate() error {
 		}
 	}
 	for _, addr := range []string{c.PublicAddr, c.AdminAddr} {
-		host, _, err := net.SplitHostPort(addr)
+		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
 			return err
+		}
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return fmt.Errorf("listener port must be 1..65535")
 		}
 		ip := net.ParseIP(host)
 		if !strings.EqualFold(host, "localhost") && (ip == nil || !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast())) {

@@ -1684,7 +1684,7 @@
         "tags": [
           "API"
         ],
-        "description": "Manager required. Default expires in seven days; never_expires=true is mutually exclusive with expires_at. Password is optional, otherwise 12\u2013256 bytes. Raw URL is returned once. Folder links show live contents recursively within the shared subtree.",
+        "description": "Manager required. Default expires in seven days; never_expires=true is mutually exclusive with expires_at. Password is optional, otherwise 12–256 bytes. Raw URL is returned once. Folder links show live contents recursively within the shared subtree.",
         "parameters": [
           {
             "name": "X-CSRF-Token",
@@ -2657,7 +2657,7 @@
         "tags": [
           "Administration"
         ],
-        "description": "Other settings (paths, listeners, origins, TLS, chunk size and concurrency) are validated startup configuration; edit JSON and restart the service.",
+        "description": "Pending-upload retention applies immediately. Other settings are managed by /api/v1/admin/config and /api/v1/admin/config/apply.",
         "parameters": [
           {
             "name": "X-CSRF-Token",
@@ -2852,6 +2852,252 @@
             "$ref": "#/components/responses/Error"
           }
         }
+      }
+    },
+    "/api/v1/admin/config": {
+      "get": {
+        "summary": "Read active configuration and saved draft",
+        "operationId": "get_api_v1_admin_config",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Configuration"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true
+      },
+      "put": {
+        "summary": "Validate and persist a configuration draft",
+        "operationId": "put_api_v1_admin_config",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Configuration"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true,
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "config": {
+                    "$ref": "#/components/schemas/ServerConfig"
+                  },
+                  "revision": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "config",
+                  "revision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "description": "All Config fields are editable. Paths and TLS are checked before saving. Drafts persist next to the active JSON as .pending and do not apply on ordinary startup. Use the latest revision; stale revisions or manual edits to the active file return 409. A new storage directory must be empty, have an existing writable parent, and not overlap current storage. Changing volume_id requires a different data_dir. Neither endpoint exposes certificate/key contents."
+      },
+      "delete": {
+        "summary": "Discard a saved configuration draft",
+        "operationId": "delete_api_v1_admin_config",
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true,
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "revision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/config/apply": {
+      "post": {
+        "summary": "Apply the draft and restart listeners",
+        "operationId": "post_api_v1_admin_config_apply",
+        "responses": {
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "applying"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true,
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for every mutation authenticated by a browser session; use csrf_token from login or me. Bearer device tokens do not use CSRF."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "revision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "description": "Browser administrators only. Drain HTTP requests, checkpoint/close SQLite, stream-copy changed storage to the empty target without deleting the source, atomically save the configuration, and restart listeners. A failed apply restores previous configuration; last_error explains the failure. Poll GET /admin/config on the current origin or open the new admin_url. The frontend never forwards cookies or CSRF to a new origin."
+      }
+    },
+    "/api/v1/admin/volumes": {
+      "get": {
+        "summary": "List mounted disks and available space",
+        "operationId": "get_api_v1_admin_volumes",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Volume"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Administration"
+        ],
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "x-private-listener-only": true
       }
     }
   },
@@ -3235,6 +3481,162 @@
           "admin_listener",
           "chunk_bytes",
           "upload_slots"
+        ],
+        "additionalProperties": false
+      },
+      "ServerConfig": {
+        "type": "object",
+        "properties": {
+          "data_dir": {
+            "type": "string"
+          },
+          "volume_id": {
+            "type": "string"
+          },
+          "public_addr": {
+            "type": "string"
+          },
+          "public_url": {
+            "type": "string"
+          },
+          "admin_addr": {
+            "type": "string"
+          },
+          "admin_url": {
+            "type": "string"
+          },
+          "admin_cert": {
+            "type": "string"
+          },
+          "admin_key": {
+            "type": "string"
+          },
+          "web_dir": {
+            "type": "string"
+          },
+          "log_file": {
+            "type": "string"
+          },
+          "import_dirs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reserve_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "upload_slots": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1024
+          },
+          "download_slots": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1024
+          },
+          "chunk_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1073741824
+          },
+          "insecure_local": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "data_dir",
+          "volume_id",
+          "public_addr",
+          "public_url",
+          "admin_addr",
+          "admin_url",
+          "admin_cert",
+          "admin_key",
+          "web_dir",
+          "log_file",
+          "import_dirs",
+          "reserve_bytes",
+          "upload_slots",
+          "download_slots",
+          "chunk_bytes",
+          "insecure_local"
+        ],
+        "additionalProperties": false
+      },
+      "Configuration": {
+        "type": "object",
+        "properties": {
+          "active": {
+            "$ref": "#/components/schemas/ServerConfig"
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ServerConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "type": "string"
+          },
+          "applying": {
+            "type": "boolean"
+          },
+          "last_error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "active",
+          "pending",
+          "revision",
+          "applying",
+          "last_error"
+        ],
+        "additionalProperties": false
+      },
+      "Volume": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "device": {
+            "type": "string"
+          },
+          "filesystem": {
+            "type": "string"
+          },
+          "total_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "free_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "read_only": {
+            "type": "boolean"
+          },
+          "current": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "device",
+          "filesystem",
+          "total_bytes",
+          "free_bytes",
+          "read_only",
+          "current"
         ],
         "additionalProperties": false
       }

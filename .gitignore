@@ -37,6 +37,8 @@ deploy/entware/sharefile.json
 *.pem
 cookies.txt
 local-config.json
+local-config.json.pending
+deploy/entware/sharefile.json.pending
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo

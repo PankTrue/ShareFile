@@ -22,7 +22,7 @@ The packaged defaults match this router's two-drive layout:
 - Storage identity: `sharefile-745ee3e5-6027-4b29-8e14-3fdc29729706`.
 - LAN/VPN HTTPS address: `https://192.168.1.1:8081`.
 
-The data drive may be mounted with `noexec`; the application executable stays on `/opt`. The installer does not format drives or import existing files. For a different drive mount or router IP, adjust the deployment templates and installation scripts before building your release.
+The data drive may be mounted with `noexec`; the application executable stays on `/opt`. The installer does not format drives or import existing files. For a different layout on the first installation, adjust the deployment templates and installation scripts before building your release. Once running, select a disk, set the storage directory, and edit all configuration fields in **Administration → Settings**. Save a draft, then apply it to restart the listeners; changing storage copies the files and database while preserving the original.
 
 ### Download and install
 
@@ -197,6 +197,7 @@ Browser and smoke checks use temporary storage and test accounts, without changi
 
 ## Features and API
 
+- Web configuration of storage disk/directory, network, TLS paths, transfer limits, import sources, UI and logging, with persisted drafts and safe offline storage copying.
 - Administrator-managed users and groups, personal roots and `Uploads` folders, shared folders, and inherited reader/editor/manager permissions.
 - Streaming tus uploads with durable offsets, resumable transfers, and HTTP Range downloads. Default concurrency: two uploads and four downloads; default chunk size: 16 MiB.
 - File and live-folder sharing links with optional passwords and expiration. Public folders include nested navigation, photo previews (JPEG, PNG, GIF, WebP, BMP), escaped UTF-8 text previews, and separate download buttons. Text previews show the first 256 KiB; other formats can be downloaded. Revocation, permission loss, and file replacement invalidate affected links.

@@ -38,7 +38,12 @@ export async function request(path: string, init: RequestInit = {}): Promise<Res
   if (!response.ok) {
     if (response.status === 401 && path !== '/api/v1/auth/login' && path !== '/api/v1/me')
       window.dispatchEvent(new Event('sharefile:unauthorized'));
-    throw new APIError(response.status);
+    const error = new APIError(response.status);
+    if (path.startsWith('/api/v1/admin/config') && [400, 409].includes(response.status)) {
+      const detail = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (detail?.error) error.message = detail.error;
+    }
+    throw error;
   }
   return response;
 }

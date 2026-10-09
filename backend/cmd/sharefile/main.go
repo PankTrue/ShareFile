@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -26,6 +27,7 @@ import (
 	"sharefile/backend/internal/logging"
 	"sharefile/backend/internal/maintenance"
 	"sharefile/backend/internal/metadata"
+	"sharefile/backend/internal/settings"
 )
 
 func main() {
@@ -63,13 +65,47 @@ func run(args []string) (result error) {
 	if err != nil {
 		return err
 	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	if command != "serve" {
+		return runConfigured(ctx, command, c, *username, *passwordStdin, *archive, nil)
+	}
+	manager, err := settings.New(*path, c)
+	if err != nil {
+		return err
+	}
+	for ctx.Err() == nil {
+		err = runConfigured(ctx, command, c, *username, *passwordStdin, *archive, manager)
+		if errors.Is(err, errReload) {
+			c, err = config.Load(*path)
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		if err != nil && manager.Snapshot().Applying {
+			previous := manager.Snapshot().Active
+			if rollback := manager.Failed(previous, err); rollback != nil {
+				return errors.Join(err, rollback)
+			}
+			c = previous
+			continue
+		}
+		return err
+	}
+	return nil
+}
+
+var errReload = errors.New("configuration reload requested")
+
+func runConfigured(ctx context.Context, command string, c config.Config, username string, passwordStdin bool, archive string, manager *settings.Manager) (result error) {
 	if c.LogFile != "" {
 		log, err := logging.Open(c.LogFile)
 		if err != nil {
 			return err
 		}
 		defer func() {
-			if result != nil {
+			if result != nil && !errors.Is(result, errReload) {
 				slog.Error("command failed", "error", result)
 			}
 			log.Close()
@@ -77,13 +113,11 @@ func run(args []string) (result error) {
 		}()
 		slog.SetDefault(slog.New(slog.NewJSONHandler(log, nil)))
 	}
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
 	if command == "init-storage" {
 		return files.Initialize(c.DataDir, c.VolumeID)
 	}
 	if command == "restore" {
-		return maintenance.Restore(ctx, c.DataDir, c.VolumeID, *archive)
+		return maintenance.Restore(ctx, c.DataDir, c.VolumeID, archive)
 	}
 	disk, err := files.OpenDisk(c.DataDir, c.VolumeID, c.ReserveBytes)
 	if err != nil {
@@ -107,28 +141,29 @@ func run(args []string) (result error) {
 	if err != nil {
 		return err
 	}
+	app.Settings = manager
 	if err = app.Files.Recover(ctx); err != nil {
 		return err
 	}
 	switch command {
 	case "admin-create":
-		password, err := readPassword(*passwordStdin)
+		password, err := readPassword(passwordStdin)
 		if err != nil {
 			return err
 		}
-		user, err := app.Identity.CreateUser(ctx, *username, password, true)
+		user, err := app.Identity.CreateUser(ctx, username, password, true)
 		if err != nil {
 			return err
 		}
 		fmt.Fprintln(os.Stdout, "administrator created:", user.Username)
 		return nil
 	case "admin-reset":
-		password, err := readPassword(*passwordStdin)
+		password, err := readPassword(passwordStdin)
 		if err != nil {
 			return err
 		}
 		var id string
-		if err = store.DB.QueryRowContext(ctx, "SELECT id FROM users WHERE username=? AND admin=1", strings.ToLower(*username)).Scan(&id); err != nil {
+		if err = store.DB.QueryRowContext(ctx, "SELECT id FROM users WHERE username=? AND admin=1", strings.ToLower(username)).Scan(&id); err != nil {
 			return fmt.Errorf("administrator not found")
 		}
 		active := true
@@ -144,9 +179,25 @@ func run(args []string) (result error) {
 		if err = store.Close(); err != nil {
 			return err
 		}
-		return maintenance.Backup(ctx, disk, *archive)
+		return maintenance.Backup(ctx, disk, archive)
 	case "serve":
-		return serve(ctx, app)
+		err = serve(ctx, app)
+		if !errors.Is(err, errReload) {
+			return err
+		}
+		if _, err = store.DB.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err == nil {
+			err = store.Close()
+		}
+		if err == nil {
+			_, err = manager.Commit(ctx, disk)
+		}
+		if err != nil {
+			if rollback := manager.Failed(c, err); rollback != nil {
+				return errors.Join(err, rollback)
+			}
+			slog.Error("settings apply failed", "error", err)
+		}
+		return errReload
 	default:
 		return fmt.Errorf("unknown command %q", command)
 	}
@@ -183,6 +234,14 @@ func serve(ctx context.Context, a *httpapi.App) error {
 	if err := a.Files.Cleanup(ctx); err != nil {
 		return err
 	}
+	var adminTLS *tls.Config
+	if !a.Config.InsecureLocal {
+		cert, err := tls.LoadX509KeyPair(a.Config.AdminCert, a.Config.AdminKey)
+		if err != nil {
+			return err
+		}
+		adminTLS = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+	}
 	public, err := net.Listen("tcp", a.Config.PublicAddr)
 	if err != nil {
 		return err
@@ -192,28 +251,42 @@ func serve(ctx context.Context, a *httpapi.App) error {
 		public.Close()
 		return err
 	}
+	if a.Settings != nil {
+		if err := a.Settings.Activated(a.Config); err != nil {
+			slog.Error("settings draft cleanup failed", "error", err)
+		}
+	}
 	public = &limitedListener{Listener: public, slots: make(chan struct{}, 64), closed: make(chan struct{})}
 	private = &limitedListener{Listener: private, slots: make(chan struct{}, 16), closed: make(chan struct{})}
 	makeServer := func(h http.Handler) *http.Server {
 		return &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 * 1024}
 	}
 	pub, priv := makeServer(a.Public()), makeServer(a.Private())
+	priv.TLSConfig = adminTLS
 	results := make(chan error, 2)
 	go func() { results <- pub.Serve(public) }()
 	go func() {
 		if a.Config.InsecureLocal {
 			results <- priv.Serve(private)
 		} else {
-			results <- priv.ServeTLS(private, a.Config.AdminCert, a.Config.AdminKey)
+			// Use the already validated pair; do not reopen TLS paths after activation.
+			results <- priv.ServeTLS(private, "", "")
 		}
 	}()
 	slog.Info("server started", "public", a.Config.PublicAddr, "admin", a.Config.AdminAddr)
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	var result error
+	var reload <-chan struct{}
+	if a.Settings != nil {
+		reload = a.Settings.Requests()
+	}
 	active := true
 	for active {
 		select {
+		case <-reload:
+			result = errReload
+			active = false
 		case <-ctx.Done():
 			active = false
 		case result = <-results:
@@ -234,12 +307,23 @@ func serve(ctx context.Context, a *httpapi.App) error {
 	}
 	stop, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	err1, err2 := pub.Shutdown(stop), priv.Shutdown(stop)
+	var err1, err2 error
+	var shutdown sync.WaitGroup
+	shutdown.Go(func() { err1 = pub.Shutdown(stop) })
+	shutdown.Go(func() { err2 = priv.Shutdown(stop) })
+	shutdown.Wait()
 	if err1 != nil {
 		_ = pub.Close()
 	}
 	if err2 != nil {
 		_ = priv.Close()
+	}
+	// A timed-out request may still hold a file or database handle. Never migrate it.
+	if errors.Is(result, errReload) && (err1 != nil || err2 != nil) {
+		if a.Settings != nil {
+			_ = a.Settings.Failed(a.Config, errors.Join(err1, err2))
+		}
+		return errors.Join(err1, err2)
 	}
 	if result != nil && !errors.Is(result, http.ErrServerClosed) {
 		return result

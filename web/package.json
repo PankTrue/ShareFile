@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "check": "tsc -b && eslint src && vitest run",
     "test": "vitest run",
-    "test:browser": "node tests/browser.mjs",
+    "test:browser": "node tests/browser.mjs && node tests/settings-browser.mjs",
     "format": "prettier --write src tests vite.config.ts"
   },
   "dependencies": {

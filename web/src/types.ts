@@ -51,3 +51,37 @@ export type Settings = {
   reserve_bytes: number;
   import_roots: number;
 };
+export type ServerConfig = {
+  data_dir: string;
+  volume_id: string;
+  public_addr: string;
+  public_url: string;
+  admin_addr: string;
+  admin_url: string;
+  admin_cert: string;
+  admin_key: string;
+  web_dir: string;
+  import_dirs: string[];
+  reserve_bytes: number;
+  upload_slots: number;
+  download_slots: number;
+  chunk_bytes: number;
+  log_file: string;
+  insecure_local: boolean;
+};
+export type Configuration = {
+  active: ServerConfig;
+  pending: ServerConfig | null;
+  revision: string;
+  applying: boolean;
+  last_error: string;
+};
+export type Volume = {
+  path: string;
+  device: string;
+  filesystem: string;
+  total_bytes: number;
+  free_bytes: number;
+  read_only: boolean;
+  current: boolean;
+};

@@ -3,7 +3,8 @@ import { api, APIError, idPath } from '../api';
 import { useResource, useTask } from '../hooks';
 import { useApp } from '../context';
 import type { FileNode, Group, Settings, User } from '../types';
-import { bytes, validName, validPassword } from '../utils';
+import { validName, validPassword } from '../utils';
+import { ServerSettings } from './Settings';
 import { Button, Confirm, ErrorBox, Modal, PageTitle, State } from '../components/UI';
 import { Icon } from '../components/Icon';
 import { FolderPicker } from '../components/FolderPicker';
@@ -344,8 +345,9 @@ export function SettingsPage() {
       <PageTitle
         eyebrow="АДМИНИСТРИРОВАНИЕ"
         title="Настройки"
-        description="Хранение незавершённых загрузок и параметры сервера."
+        description="Диск, директория хранения, адреса доступа и параметры сервера."
       />
+      <ServerSettings />
       <State loading={data.loading} error={data.error} retry={data.refresh} />
       {data.value && <SettingsForm settings={data.value} onSaved={data.refresh} />}
     </>
@@ -404,44 +406,6 @@ function SettingsForm({ settings, onSaved }: { settings: Settings; onSaved: () =
       </section>
       <section className="settings-card">
         <div className="settings-heading">
-          <span className="file-symbol folder">
-            <Icon name="settings" />
-          </span>
-          <div>
-            <h2>Параметры запуска</h2>
-            <p>Задаются в конфигурационном файле сервера и применяются после перезапуска.</p>
-          </div>
-        </div>
-        <dl className="settings-values">
-          <div>
-            <dt>Размер части загрузки</dt>
-            <dd>{bytes(settings.chunk_bytes)}</dd>
-          </div>
-          <div>
-            <dt>Одновременные загрузки</dt>
-            <dd>{settings.upload_slots}</dd>
-          </div>
-          <div>
-            <dt>Одновременные скачивания</dt>
-            <dd>{settings.download_slots}</dd>
-          </div>
-          <div>
-            <dt>Резерв свободного места</dt>
-            <dd>{bytes(settings.reserve_bytes)}</dd>
-          </div>
-          <div>
-            <dt>Источники импорта</dt>
-            <dd>{settings.import_roots}</dd>
-          </div>
-        </dl>
-        <p className="hint">
-          Путь к диску, адреса доступа, сертификаты и источники импорта также задаются в
-          конфигурации. Ограничений на размер файла и квот пользователей нет: доступность загрузки
-          зависит от свободного места на диске.
-        </p>
-      </section>
-      <section className="settings-card">
-        <div className="settings-heading">
           <span className="file-symbol document">
             <Icon name="upload" />
           </span>
@@ -454,7 +418,9 @@ function SettingsForm({ settings, onSaved }: { settings: Settings; onSaved: () =
           Импортировать файл
         </Button>
         {!settings.import_roots && (
-          <p className="hint">Сначала добавьте источники в import_dirs конфигурационного файла.</p>
+          <p className="hint">
+            Добавьте директории в разделе «Источники импорта» выше и примените настройки.
+          </p>
         )}
       </section>
       {importing && (
