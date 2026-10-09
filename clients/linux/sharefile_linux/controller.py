@@ -7,6 +7,7 @@ import threading
 import time
 
 from .bridge import BridgeCall, Cancelled, ClientError, safe_message
+from .history import HistoryStore
 from .state import CHECKPOINT, UNCERTAIN, require_id, validate_job
 
 
@@ -21,7 +22,14 @@ class Controller:
         self.open_browser, self.bridge_factory = open_browser, bridge_factory
         self.state = store.load()  # Corrupt state stops startup; it is never overwritten.
         self.store.save(self.state)
-        self.token = self.password = self.notice = self.pairing_url = ""
+        self.history = HistoryStore(store.path.with_name("history.json"), credentials)
+        history_error = ""
+        try:
+            self.history.load()
+        except Exception as error:
+            history_error = safe_message(error)
+        self.token = self.password = self.pairing_url = ""
+        self.notice = history_error
         self._lock = threading.RLock()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sharefile")
         self._pending = 0
@@ -38,6 +46,7 @@ class Controller:
     def snapshot(self):
         with self._lock:
             return {**copy.deepcopy(self.state), "connected": bool(self.token),
+                    "history": self.history.for_account(self.state["settings"]["origin"], self.state["settings"]["owner"]),
                     "notice": self.notice, "pairing_url": self.pairing_url,
                     "active_id": self._active_id, "busy": self._pending > 0,
                     "pending_files": len(self._pending_files)}
@@ -312,10 +321,19 @@ class Controller:
             link = self._request("share", job={key: job[key] for key in CHECKPOINT}, stop=stop,
                                  options={"days": job["days"], "never": job["never"], "password": self.password})
             require_id(link["share"]["id"])
-            self._update(identity, status="done", link=link["url"], share_id=link["share"]["id"])
         except Exception:
             self._update(identity, status="uncertain", message=UNCERTAIN)
             raise
+        warning = ""
+        try:
+            settings = self.state["settings"]
+            # The serial worker owns history mutations. Never hold the snapshot lock
+            # while Secret Service may wait for the user to unlock their keyring.
+            self.history.add(settings["origin"], settings["owner"], job, link)
+        except Exception:
+            warning = "Ссылка создана, но не сохранена в защищённой истории. Скопируйте её из очереди"
+            self.notice = warning
+        self._update(identity, status="done", link=link["url"], share_id=link["share"]["id"], message=warning)
 
     def _finish_batch(self, batch):
         with self._lock:
@@ -397,12 +415,46 @@ class Controller:
             self._share(identity)
         return self._submit(share)
 
+    def _revoke_share(self, share_id):
+        if not self.token:
+            raise ClientError("Подключите тот же сервер и аккаунт для отзыва ссылки")
+        self._request("revoke_share", share_id=share_id)
+        settings = self.state["settings"]
+        entry = next((entry for entry in self.history.entries if entry["origin"] == settings["origin"]
+                      and entry["owner"] == settings["owner"] and entry["share_id"] == share_id), None)
+        with self._lock:
+            for job in self.state["jobs"]:
+                if job["share_id"] == share_id:
+                    job.update(link="", share_id="")
+        try:
+            try:
+                with self._lock:
+                    self.store.save(self.state)
+            finally:
+                if entry:
+                    self.history.revoked(entry)
+        except Exception:
+            raise ClientError("Ссылка отозвана на сервере, но локальная история не сохранена. Проверьте Secret Service и диск") from None
+        self.notice = "Ссылка отозвана"
+
     def revoke(self, identity):
+        return self._submit(lambda: self._revoke_share(self._job(identity)["share_id"]))
+
+    def history_link(self, identity, callback):
+        def read():
+            settings = self.state["settings"]
+            entry = self.history.find(settings["origin"], settings["owner"], identity)
+            url = self.history.link(entry)
+            self.dispatch(lambda: callback(url))
+        return self._submit(read)
+
+    def revoke_history(self, identity):
         def revoke():
-            if not self.token:
-                raise ClientError("Подключите хранилище")
-            self._request("revoke_share", share_id=self._job(identity)["share_id"])
-            self._update(identity, link="", share_id="")
+            settings = self.state["settings"]
+            entry = self.history.find(settings["origin"], settings["owner"], identity)
+            if entry["revoked"]:
+                raise ClientError("Ссылка уже отозвана")
+            self._revoke_share(identity)
         return self._submit(revoke)
 
     def close(self):

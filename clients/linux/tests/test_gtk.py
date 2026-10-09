@@ -144,6 +144,38 @@ class GtkTests(unittest.TestCase):
             store.delete(origin)
         self.assertEqual(store.read(origin), "")
 
+    def test_history_search_copy_open_and_revoke_after_queue_clear(self):
+        self.app.controller.add_files([str(self.root / "История 日本語.txt")]).result(timeout=5)
+        self.wait_idle()
+        self.app.controller.clear_finished().result(timeout=5)
+        self.wait_idle()
+        self.app.show_history()
+        self.assertEqual(self.app.notebook.get_current_page(), 2)
+        self.app.history_search.set_text("日本語")
+        self.app.refresh_history()
+        self.assertEqual(len(self.app.history_rows), 1)
+        self.app.history_tree.get_selection().select_path(0)
+        identity = self.app.selected_history()
+        copies, opened = [], []
+        old_clipboard, old_open = self.app.clipboard, self.app.open_url
+        try:
+            self.app.clipboard = lambda links: copies.extend(links) or True
+            self.app.open_url = opened.append
+            self.app.copy_history(identity)
+            self.wait_idle()
+            self.app.open_history(identity)
+            self.wait_idle()
+            self.assertEqual(copies, opened)
+            self.assertEqual(len(copies), 1)
+            self.app.controller.revoke_history(identity).result(timeout=5)
+            self.wait_idle()
+            self.assertEqual(self.app.history_rows[0][3], "Отозвана")
+            self.assertFalse(self.app.history_buttons["copy"].get_sensitive())
+        finally:
+            self.app.clipboard, self.app.open_url = old_clipboard, old_open
+            self.app.history_search.set_text("")
+            self.app.window.hide()
+
     def test_desktop_entry_validation_and_real_nautilus_argv(self):
         import importlib.util
         from unittest.mock import patch

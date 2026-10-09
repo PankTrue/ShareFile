@@ -15,12 +15,36 @@ public sealed class DesktopIntegration : IDisposable
         Icon = System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? (System.Drawing.Icon)System.Drawing.SystemIcons.Application.Clone()
     };
     public Action? OpenRequested { get; set; }
+    public Action? HistoryRequested { get; set; }
+    public Func<IReadOnlyList<SentLink>>? RecentLinks { get; set; }
+    public Action<SentLink>? CopyHistoryRequested { get; set; }
+    public Action<SentLink>? OpenHistoryRequested { get; set; }
+    public Action<SentLink>? RevokeHistoryRequested { get; set; }
+    public Func<SentLink, bool>? CanRevokeHistory { get; set; }
     public Action? ExitRequested { get; set; }
 
     public DesktopIntegration()
     {
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Открыть ShareFile", null, (_, _) => OpenRequested?.Invoke());
+        menu.Items.Add("История ссылок", null, (_, _) => HistoryRequested?.Invoke());
+        var recent = new Forms.ToolStripMenuItem("Недавние ссылки");
+        menu.Items.Add(recent);
+        menu.Opening += (_, _) =>
+        {
+            foreach (var child in recent.DropDownItems.Cast<Forms.ToolStripItem>().ToArray()) child.Dispose();
+            recent.DropDownItems.Clear();
+            foreach (var entry in RecentLinks?.Invoke() ?? [])
+            {
+                var item = new Forms.ToolStripMenuItem(entry.Name);
+                item.DropDownItems.Add(new Forms.ToolStripMenuItem(entry.Status) { Enabled = false });
+                item.DropDownItems.Add(new Forms.ToolStripMenuItem("Копировать", null, (_, _) => CopyHistoryRequested?.Invoke(entry)) { Enabled = entry.Active });
+                item.DropDownItems.Add(new Forms.ToolStripMenuItem("Открыть", null, (_, _) => OpenHistoryRequested?.Invoke(entry)) { Enabled = entry.Active });
+                item.DropDownItems.Add(new Forms.ToolStripMenuItem("Отозвать", null, (_, _) => RevokeHistoryRequested?.Invoke(entry)) { Enabled = CanRevokeHistory?.Invoke(entry) == true });
+                recent.DropDownItems.Add(item);
+            }
+            if (recent.DropDownItems.Count == 0) recent.DropDownItems.Add(new Forms.ToolStripMenuItem("История пока пуста") { Enabled = false });
+        };
         menu.Items.Add("Выход", null, (_, _) => ExitRequested?.Invoke());
         _tray.ContextMenuStrip = menu;
         _tray.DoubleClick += (_, _) => OpenRequested?.Invoke();

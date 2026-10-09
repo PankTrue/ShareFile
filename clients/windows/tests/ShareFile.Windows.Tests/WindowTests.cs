@@ -25,6 +25,14 @@ public sealed class WindowTests
                 Assert.False(window.IsVisible);
                 window.Show(); window.UpdateLayout();
                 Assert.True(window.IsVisible); Assert.Same(model, window.DataContext); Assert.True(window.ActualWidth >= 760);
+                var tabs = Assert.IsType<System.Windows.Controls.TabControl>(window.FindName("ClientTabs"));
+                Assert.Equal(3, tabs.Items.Count);
+                tabs.SelectedIndex = 2; window.UpdateLayout();
+                Assert.Equal("История ссылок", Assert.IsType<System.Windows.Controls.TabItem>(tabs.SelectedItem).Header);
+                model.HistorySearch = "日本語";
+                Assert.Empty(model.HistoryRows);
+                Assert.False(model.CopyHistoryCommand.CanExecute(null));
+                Assert.False(model.RevokeHistoryCommand.CanExecute(null));
                 window.Hide(); Assert.False(window.IsVisible);
                 window.Close(); app.Shutdown();
                 Assert.True(queue.DisposeAsync().IsCompletedSuccessfully);

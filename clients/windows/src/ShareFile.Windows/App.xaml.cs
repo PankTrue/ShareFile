@@ -29,6 +29,7 @@ public partial class App : Application
             var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ShareFile");
             _services = new ServiceCollection()
                 .AddSingleton<IStateStore>(new JsonStateStore(Path.Combine(directory, "state.json")))
+                .AddSingleton<LinkHistory>(services => new LinkHistory(Path.Combine(directory, "history.json"), services.GetRequiredService<ICredentialStore>()))
                 .AddSingleton<UploadEngine>().AddSingleton<UploadQueue>()
                 .AddSingleton<ICredentialStore, CredentialStore>()
                 .AddSingleton<DesktopIntegration>().AddSingleton<MainViewModel>()
@@ -41,6 +42,12 @@ public partial class App : Application
             _model.ShowRequested = ShowWindow;
             var desktop = _services.GetRequiredService<DesktopIntegration>();
             desktop.OpenRequested = ShowWindow;
+            desktop.HistoryRequested = () => { _model.SelectedTab = 2; ShowWindow(); };
+            desktop.RecentLinks = () => _model.HistoryEntries.Take(8).ToArray();
+            desktop.CopyHistoryRequested = entry => _ = _model.CopyHistoryEntryAsync(entry);
+            desktop.OpenHistoryRequested = entry => _ = _model.OpenHistoryEntryAsync(entry);
+            desktop.RevokeHistoryRequested = entry => _ = _model.RevokeHistoryEntryAsync(entry);
+            desktop.CanRevokeHistory = entry => _model.IsConnected && !entry.Revoked;
             desktop.ExitRequested = () => _ = ExitAsync();
             await _model.InitializeAsync();
             _model.LoadSettings();

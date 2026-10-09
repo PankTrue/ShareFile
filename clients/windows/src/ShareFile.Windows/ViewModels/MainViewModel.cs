@@ -38,6 +38,15 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly Stack<Node> _trail = [];
     public Action? ShowRequested { get; set; }
     public ObservableCollection<UploadRow> Jobs { get; } = [];
+    public IReadOnlyList<SentLink> HistoryEntries => _queue.History?.ForAccount(_queue.State.Settings.Origin, _queue.State.Settings.Owner) ?? [];
+    public ObservableCollection<SentLink> HistoryRows { get; } = [];
+    [ObservableProperty] private string _historySearch = "";
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CopyHistoryCommand), nameof(OpenHistoryCommand), nameof(RevokeHistoryCommand))]
+    private SentLink? _selectedHistory;
+    partial void OnHistorySearchChanged(string value) => RefreshHistory();
+    private bool CanReadHistory() => SelectedHistory?.Active == true;
+    private bool CanRevokeHistory() => IsConnected && SelectedHistory is { Revoked: false };
     public ObservableCollection<Node> Folders { get; } = [];
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ResumeCommand), nameof(RemoveCommand), nameof(NewLinkCommand), nameof(CopyLinkCommand), nameof(RevokeLinkCommand))]
@@ -52,7 +61,7 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _silentExplorerUploads = true;
     [ObservableProperty] private bool _notifyUploads = true;
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ConnectCommand), nameof(DisconnectCommand), nameof(ResumeCommand), nameof(NewLinkCommand), nameof(RevokeLinkCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConnectCommand), nameof(DisconnectCommand), nameof(ResumeCommand), nameof(NewLinkCommand), nameof(RevokeLinkCommand), nameof(RevokeHistoryCommand))]
     private bool _isConnected;
     [ObservableProperty] private int _selectedTab;
     [ObservableProperty] private string _pairingUrl = "";
@@ -61,7 +70,7 @@ public sealed partial class MainViewModel : ObservableObject
     private bool CanDisconnect() => IsConnected;
     private bool CanResume() => IsConnected && SelectedJob?.Job.Status is UploadStatus.Paused or UploadStatus.Error;
     private bool CanNewLink() => IsConnected && SelectedJob?.Job.Status is UploadStatus.Done or UploadStatus.Uploaded or UploadStatus.Uncertain;
-    private bool CanCopyLink() => SelectedJob?.Job.Link.Length > 0;
+    private bool CanCopyLink() => SelectedJob is { } row && (row.Job.Link.Length > 0 || HistoryEntries.Any(e => e.ShareId == row.Job.ShareId && e.Active));
     private bool CanRevokeLink() => IsConnected && SelectedJob?.Job.ShareId.Length > 0;
     private bool CanRemove() => SelectedJob is not null;
     private static string TokenAccount(string origin) => "device:" + origin;
@@ -70,6 +79,7 @@ public sealed partial class MainViewModel : ObservableObject
     public MainViewModel(UploadQueue queue, ICredentialStore credentials, DesktopIntegration desktop)
     {
         _queue = queue; _credentials = credentials; _desktop = desktop;
+        if (_queue.History is { } history) history.Changed += () => Application.Current.Dispatcher.BeginInvoke(RefreshHistory);
         _queue.Changed += state => Application.Current.Dispatcher.BeginInvoke(() => Refresh(state));
         _queue.Failed += error => Application.Current.Dispatcher.BeginInvoke(() =>
         {
@@ -118,8 +128,38 @@ public sealed partial class MainViewModel : ObservableObject
         SelectedJob = Jobs.FirstOrDefault(j => j.Job.Id == selected);
         Username = _queue.Connected ? state.Settings.Username : "Не подключено";
         FolderName = state.Settings.FolderName;
+        RefreshHistory();
         // Editable settings are initialized once; progress updates must not overwrite unsaved input.
     }
+    private void RefreshHistory()
+    {
+        var selected = SelectedHistory?.Account;
+        HistoryRows.Clear();
+        foreach (var entry in HistoryEntries.Where(e => e.Name.Contains(HistorySearch.Trim(), StringComparison.CurrentCultureIgnoreCase))) HistoryRows.Add(entry);
+        SelectedHistory = HistoryRows.FirstOrDefault(e => e.Account == selected);
+    }
+    public Task CopyHistoryEntryAsync(SentLink entry) => GuardAsync(async () =>
+    {
+        if (_queue.History is null) return;
+        var link = await _queue.History.GetLinkAsync(entry);
+        Notice = await _desktop.CopyAsync(link) ? "Ссылка скопирована" : "Буфер обмена недоступен. Попробуйте снова";
+    });
+    public Task OpenHistoryEntryAsync(SentLink entry) => GuardAsync(async () =>
+    {
+        if (_queue.History is { } history) DesktopIntegration.OpenBrowser(await history.GetLinkAsync(entry));
+    });
+    public Task RevokeHistoryEntryAsync(SentLink entry) => GuardAsync(async () =>
+    {
+        await _queue.RevokeHistoryAsync(entry);
+        Notice = "Ссылка отозвана";
+    });
+    [RelayCommand(CanExecute = nameof(CanReadHistory))]
+    private async Task CopyHistoryAsync() { if (SelectedHistory is { } entry) await CopyHistoryEntryAsync(entry); }
+    [RelayCommand(CanExecute = nameof(CanReadHistory))]
+    private async Task OpenHistoryAsync() { if (SelectedHistory is { } entry) await OpenHistoryEntryAsync(entry); }
+    [RelayCommand(CanExecute = nameof(CanRevokeHistory))]
+    private async Task RevokeHistoryAsync() { if (SelectedHistory is { } entry) await RevokeHistoryEntryAsync(entry); }
+
     public void LoadSettings()
     {
         var settings = _queue.State.Settings;
@@ -255,7 +295,13 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task CopyLinkAsync()
     {
         var job = _queue.State.Jobs.FirstOrDefault(j => j.Id == SelectedJob?.Job.Id);
-        if (job?.Link is not { Length: > 0 } link) { Notice = "После перезапуска создайте новую ссылку"; return; }
+        if (job?.Link is not { Length: > 0 } link)
+        {
+            var saved = HistoryEntries.FirstOrDefault(e => e.ShareId == job?.ShareId && e.Active);
+            if (saved is not null) { await CopyHistoryEntryAsync(saved); return; }
+            Notice = "Откройте историю ссылок. Если ссылка там отсутствует, создайте новую";
+            return;
+        }
         Notice = await _desktop.CopyAsync(link) ? "Ссылка скопирована" : "Буфер обмена недоступен. Попробуйте снова";
     }
     [RelayCommand(CanExecute = nameof(CanRevokeLink))]

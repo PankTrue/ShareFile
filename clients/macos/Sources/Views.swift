@@ -13,7 +13,7 @@ struct RootView: View {
             sidebar
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text(model.page == "files" ? "Загрузки" : "Настройки").font(.system(size: 27, weight: .semibold))
+                    Text(model.page == "files" ? "Загрузки" : model.page == "history" ? "История ссылок" : "Настройки").font(.system(size: 27, weight: .semibold))
                     Spacer()
                     HStack(spacing: 6) {
                         Circle().fill(model.connected ? green : Color.secondary).frame(width: 7, height: 7)
@@ -22,7 +22,7 @@ struct RootView: View {
                 }.padding(.horizontal, 32).padding(.top, 30).padding(.bottom, 24)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
-                        if model.page == "files" { uploads } else { settings }
+                        if model.page == "files" { uploads } else if model.page == "history" { LinkHistoryView(model: model, history: model.history) } else { settings }
                     }.padding(.horizontal, 32).padding(.bottom, 24)
                 }
                 if !model.notice.isEmpty {
@@ -60,6 +60,7 @@ struct RootView: View {
             }.padding(.top, 34)
             VStack(spacing: 6) {
                 nav("Загрузки", icon: "arrow.up.circle", page: "files")
+                nav("История", icon: "clock.arrow.circlepath", page: "history")
                 nav("Настройки", icon: "slider.horizontal.3", page: "settings")
             }
             Spacer()
@@ -138,6 +139,9 @@ struct RootView: View {
                 if job.status == "uploading" || job.status == "queued" { Button { model.pause(job.id) } label: { Image(systemName: "pause") }.help("Приостановить") }
                 if job.status == "paused" || job.status == "error" { Button { model.resume(job.id) } label: { Image(systemName: "play") }.disabled(!model.connected).help("Продолжить") }
                 if !job.link.isEmpty { Button("Ссылка") { model.copy(job.link) } }
+                else if let saved = model.sentLinks.first(where: { $0.shareID == job.shareID && $0.active }) {
+                    Button("Ссылка") { model.copyHistory(saved) }
+                }
                 if ["uploaded", "uncertain", "done"].contains(job.status) && job.link.isEmpty {
                     Button("Новая ссылка") { model.retryLink(job.id) }.disabled(!model.connected || model.activeCount > 0)
                 }
@@ -182,7 +186,7 @@ struct RootView: View {
                     Picker("Срок ссылки", selection: $model.settings.days) { Text("1 день").tag(1); Text("7 дней").tag(7); Text("30 дней").tag(30); Text("90 дней").tag(90) }.disabled(model.settings.never)
                     Toggle("Без срока действия", isOn: $model.settings.never)
                     SecureField("Пароль ссылки (необязательно, минимум 12 байт)", text: $model.password).textFieldStyle(.roundedBorder)
-                    Text("Пароль для новых ссылок хранится в Keychain. Права на файлы и отзыв ссылок настраиваются в Web UI.").font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text("Пароль для новых ссылок хранится в Keychain. Отозвать отправленную ссылку можно в истории; права на файлы настраиваются в Web UI.").font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Button("Сохранить настройки") { model.saveOptions() }.disabled(!model.connected)
                 }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -214,5 +218,32 @@ struct RootView: View {
                 }.padding(.vertical, 4)
             }
         }.padding(22).frame(width: 520, height: 400)
+    }
+}
+
+struct LinkHistoryView: View {
+    @ObservedObject var model: Model
+    @ObservedObject var history: LinkHistory
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            TextField("Найти файл или папку в истории", text: $model.historySearch).textFieldStyle(.roundedBorder)
+            Text("История хранит до 200 ссылок. Показаны ссылки текущего аккаунта. Очистка очереди сохраняет историю. Ссылки защищены Keychain.")
+                .font(.system(size: 12)).foregroundStyle(.secondary)
+            let entries = model.sentLinks.filter { model.historySearch.isEmpty || $0.name.localizedCaseInsensitiveContains(model.historySearch) }
+            if entries.isEmpty { Text(model.historySearch.isEmpty ? "История пока пуста" : "Ничего не найдено").foregroundStyle(.secondary).padding(.vertical, 28) }
+            ForEach(entries) { entry in
+                HStack(spacing: 14) {
+                    Image(systemName: "link").foregroundStyle(green)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(entry.name).font(.system(size: 13, weight: .medium)).lineLimit(2)
+                        Text(entry.created.formatted(date: .numeric, time: .shortened) + " · " + entry.label).font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Копировать") { model.copyHistory(entry) }.disabled(!entry.active)
+                    Button("Открыть") { model.openHistory(entry) }.disabled(!entry.active)
+                    Button("Отозвать") { model.revokeHistory(entry) }.disabled(!model.canRevokeHistory(entry))
+                }.buttonStyle(.borderless).padding(16).background(Color.white).clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
     }
 }

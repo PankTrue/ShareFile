@@ -227,6 +227,8 @@ make macos-check
 make desktop-smoke
 ```
 
+All three desktop clients keep a searchable sent-link history across restarts. The menu/tray offers eight recent links; the history screen supports copying, opening and revoking any saved link. Up to 200 entries are retained, independently of the upload queue. Capability URLs stay in Keychain, Windows Credential Manager or Secret Service; the local metadata index contains no URLs or credentials. Revocation uses the original server and account.
+
 The package is `clients/macos/build/ShareFile-macOS-universal.zip`. See [docs/macos.md](docs/macos.md).
 
 ## Linux client

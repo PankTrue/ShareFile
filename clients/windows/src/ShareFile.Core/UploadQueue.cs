@@ -5,7 +5,7 @@ public sealed record BatchFailure(int FailedCount, int TotalCount, bool Notify);
 
 // One worker owns network transfers. Mutations and durable checkpoints share a gate;
 // callbacks receive immutable snapshots and never run under that gate.
-public sealed class UploadQueue(IStateStore store, UploadEngine engine) : IAsyncDisposable
+public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHistory? history = null) : IAsyncDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
@@ -19,6 +19,7 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine) : IAsync
     private string? _activeId;
     private CancellationTokenSource? _active;
     private bool _loaded;
+    public LinkHistory? History => history;
     public ClientState State => _state;
     public bool Connected => _api is not null;
     public event Action<ClientState>? Changed;
@@ -42,6 +43,11 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine) : IAsync
 
     public async Task LoadAsync(CancellationToken ct = default)
     {
+        if (history is not null)
+        {
+            try { await history.LoadAsync(ct).ConfigureAwait(false); }
+            catch (ClientException error) { Failed?.Invoke(error.Message); }
+        }
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -219,7 +225,8 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine) : IAsync
         await UpdateAsync(job.Id, j => j with { Status = UploadStatus.Sharing, Message = "" }, ct).ConfigureAwait(false);
         // This operation is never retried. Persist Sharing before sending its one-time request.
         var link = await api.ShareAsync(job.FileId, new ShareOptions(job.Days, job.Never, password), ct).ConfigureAwait(false);
-        await UpdateAsync(job.Id, j => j with { Status = UploadStatus.Done, Link = link.Url, ShareId = link.Share.Id }, CancellationToken.None).ConfigureAwait(false);
+        var warning = await RememberLinkAsync(job, link).ConfigureAwait(false);
+        await UpdateAsync(job.Id, j => j with { Status = UploadStatus.Done, Link = link.Url, ShareId = link.Share.Id, Message = warning }, CancellationToken.None).ConfigureAwait(false);
     }
 
     private void FinishBatch(string batch)
@@ -300,10 +307,11 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine) : IAsync
             try
             {
                 var link = await _api.ShareAsync(job.FileId, new ShareOptions(job.Days, job.Never, _password), ct).ConfigureAwait(false);
+                var warning = await RememberLinkAsync(job, link).ConfigureAwait(false);
                 await CommitAsync(_state with
                 {
                     Jobs = _state.Jobs.Select(j => j.Id == id
-                    ? j with { Status = UploadStatus.Done, Link = link.Url, ShareId = link.Share.Id, Message = "" } : j).ToArray()
+                    ? j with { Status = UploadStatus.Done, Link = link.Url, ShareId = link.Share.Id, Message = warning } : j).ToArray()
                 }, CancellationToken.None).ConfigureAwait(false);
             }
             catch
@@ -324,19 +332,57 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine) : IAsync
 
     public Task WaitForIdleAsync(CancellationToken ct = default) => _worker.WaitAsync(ct);
 
+    private async Task<string> RememberLinkAsync(UploadJob job, ShareLink link)
+    {
+        if (history is null) return "";
+        try { await history.RecordAsync(_state.Settings, job, link).ConfigureAwait(false); return ""; }
+        catch
+        {
+            const string message = "Ссылка создана, но не сохранена в защищённой истории. Скопируйте её из очереди";
+            return message;
+        }
+    }
+
+    private async Task RevokeShareAsync(string shareId, CancellationToken ct)
+    {
+        if (_api is null) throw new ClientException("Подключите тот же сервер и аккаунт для отзыва ссылки");
+        await _api.RevokeShareAsync(shareId, ct).ConfigureAwait(false);
+        // Confirmed revocation invalidates in-memory links even if the local disk fails.
+        _state = _state with { Jobs = _state.Jobs.Select(j => j.ShareId == shareId ? j with { Link = "", ShareId = "" } : j).ToArray() };
+        try
+        {
+            try { await store.SaveAsync(_state, CancellationToken.None).ConfigureAwait(false); }
+            finally
+            {
+                if (history is not null) await history.MarkRevokedAsync(_state.Settings.Origin, _state.Settings.Owner, shareId).ConfigureAwait(false);
+            }
+        }
+        catch { throw new ClientException("Ссылка отозвана на сервере, но локальная история не сохранена. Проверьте Credential Manager и диск"); }
+    }
+
     public async Task RevokeLinkAsync(string id, CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (_api is null) throw new ClientException("Подключите хранилище");
             var job = _state.Jobs.Single(j => j.Id == id);
             if (job.ShareId.Length == 0) throw new ClientException("У этой записи нет известной ссылки");
-            await _api.RevokeShareAsync(job.ShareId, ct).ConfigureAwait(false);
-            await CommitAsync(_state with { Jobs = _state.Jobs.Select(j => j.Id == id ? j with { Link = "", ShareId = "" } : j).ToArray() }, ct).ConfigureAwait(false);
+            await RevokeShareAsync(job.ShareId, ct).ConfigureAwait(false);
         }
-        finally { _gate.Release(); }
-        Publish();
+        finally { _gate.Release(); Publish(); }
+    }
+
+    public async Task RevokeHistoryAsync(SentLink entry, CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (entry.Origin != _state.Settings.Origin || entry.Owner != _state.Settings.Owner || history is null ||
+                !history.Entries.Any(e => e.Account == entry.Account && !e.Revoked))
+                throw new ClientException("Для отзыва подключите тот же сервер и аккаунт");
+            await RevokeShareAsync(entry.ShareId, ct).ConfigureAwait(false);
+        }
+        finally { _gate.Release(); Publish(); }
     }
     public static string SafeMessage(Exception error) => error switch
     {

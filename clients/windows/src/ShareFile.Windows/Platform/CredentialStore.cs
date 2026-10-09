@@ -6,12 +6,7 @@ using ShareFile.Core;
 
 namespace ShareFile.Windows.Platform;
 
-public interface ICredentialStore
-{
-    string? Read(string account);
-    void Write(string account, string value);
-    void Delete(string account);
-}
+public interface ICredentialStore : ILinkSecrets;
 
 // Windows encrypts Generic Credentials for the current user. Secrets never enter state.json.
 public sealed class CredentialStore : ICredentialStore

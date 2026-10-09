@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-@MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
+@MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var window: NSWindow!
     var statusItem: NSStatusItem!
     var model: Model!
@@ -43,6 +43,7 @@ import SwiftUI
         let appMenu = NSMenu(); appItem.submenu = appMenu
         appMenu.addItem(withTitle: "О ShareFile", action: #selector(about), keyEquivalent: "")
         appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "История ссылок…", action: #selector(showHistory), keyEquivalent: "y")
         appMenu.addItem(withTitle: "Настройки…", action: #selector(settings), keyEquivalent: ",")
         let servicesItem = NSMenuItem(title: "Службы", action: nil, keyEquivalent: "")
         let services = NSMenu(); servicesItem.submenu = services; appMenu.addItem(servicesItem); NSApp.servicesMenu = services
@@ -59,6 +60,9 @@ import SwiftUI
         statusItem.button?.image = NSImage(systemSymbolName: "arrow.up.doc", accessibilityDescription: "ShareFile")
         let menu = NSMenu()
         menu.addItem(withTitle: "Открыть ShareFile", action: #selector(showWindow), keyEquivalent: "")
+        menu.addItem(withTitle: "История ссылок…", action: #selector(showHistory), keyEquivalent: "")
+        let recent = NSMenuItem(title: "Недавние ссылки", action: nil, keyEquivalent: "")
+        let recentMenu = NSMenu(); recentMenu.delegate = self; recent.submenu = recentMenu; menu.addItem(recent)
         menu.addItem(withTitle: "Настройки…", action: #selector(settings), keyEquivalent: "")
         menu.addItem(withTitle: "Загрузить и поделиться…", action: #selector(pickFiles), keyEquivalent: "")
         menu.addItem(withTitle: "Приостановить загрузки", action: #selector(pauseAll), keyEquivalent: "")
@@ -85,6 +89,28 @@ import SwiftUI
         NSApp.setActivationPolicy(.regular)
         window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
     }
+    @objc func showHistory() { model.page = "history"; showWindow() }
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        for entry in model.sentLinks.prefix(8) {
+            let item = NSMenuItem(title: entry.name, action: nil, keyEquivalent: "")
+            let submenu = NSMenu(); submenu.autoenablesItems = false
+            let status = NSMenuItem(title: entry.label, action: nil, keyEquivalent: ""); status.isEnabled = false; submenu.addItem(status)
+            for (title, action) in [("Копировать ссылку", #selector(copyRecent(_:))), ("Открыть ссылку", #selector(openRecent(_:))), ("Отозвать ссылку", #selector(revokeRecent(_:)))] {
+                let command = NSMenuItem(title: title, action: action, keyEquivalent: "")
+                command.target = self; command.representedObject = entry
+                command.isEnabled = action == #selector(revokeRecent(_:)) ? model.canRevokeHistory(entry) : entry.active
+                submenu.addItem(command)
+            }
+            item.submenu = submenu; menu.addItem(item)
+        }
+        if menu.items.isEmpty { let empty = NSMenuItem(title: "История пока пуста", action: nil, keyEquivalent: ""); empty.isEnabled = false; menu.addItem(empty) }
+        menu.addItem(.separator())
+        let all = NSMenuItem(title: "Вся история…", action: #selector(showHistory), keyEquivalent: ""); all.target = self; menu.addItem(all)
+    }
+    @objc func copyRecent(_ sender: NSMenuItem) { if let entry = sender.representedObject as? SentLink { model.copyHistory(entry) } }
+    @objc func openRecent(_ sender: NSMenuItem) { if let entry = sender.representedObject as? SentLink { model.openHistory(entry) } }
+    @objc func revokeRecent(_ sender: NSMenuItem) { if let entry = sender.representedObject as? SentLink { model.revokeHistory(entry) } }
     @objc func settings() { model.page = "settings"; showWindow() }
     @objc func pickFiles() { showWindow(); model.chooseFiles() }
     @objc func pauseAll() { model.pauseAll() }
@@ -175,8 +201,13 @@ if CommandLine.arguments.contains("--self-test") {
             model.save()
         }
         pasteboard.releaseGlobally()
-        print("PASS: silent Finder cold/warm launch, legacy preferences/defaults/persistence, Unicode file URLs, Keychain, secret-free checkpoints, safe queue recovery, 64-bit sizes")
+        Task { @MainActor in
+            do { try await verifyLinkHistory() }
+            catch { fputs("FAIL: \(error.localizedDescription)\n", stderr); exit(1) }
+        print("PASS: secure link history restart, retention, scope, expiry, revocation and corruption; silent Finder cold/warm launch, legacy preferences/defaults/persistence, Unicode file URLs, Keychain, secret-free checkpoints, safe queue recovery, 64-bit sizes")
         exit(0)
+        }
+        dispatchMain()
     } catch { fputs("FAIL: \(error.localizedDescription)\n", stderr); exit(1) }
 }
 if CommandLine.arguments.contains("--integration-test") { integrationSmokeTest() }

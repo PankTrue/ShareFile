@@ -7,6 +7,34 @@ namespace ShareFile.Windows.Tests;
 public sealed class PlatformTests
 {
     [Fact]
+    public async Task LinkHistorySurvivesRestartWithRealCredentialManager()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "sharefile-native-history-" + Guid.NewGuid().ToString("N"));
+        var credentials = new CredentialStore();
+        var settings = new ClientSettings { Origin = "https://" + Guid.NewGuid().ToString("N") + ".invalid", Owner = UploadEngine.NewId() };
+        var job = new UploadJob { Id = UploadEngine.NewId(), Name = "Отчёт 日本語.txt", Source = "C:\\history.txt", Fingerprint = "", Folder = "" };
+        var link = new ShareLink(settings.Origin + "/s/" + UploadEngine.NewId(), new ShareIdentity(UploadEngine.NewId()));
+        var history = new LinkHistory(Path.Combine(directory, "history.json"), credentials);
+        try
+        {
+            await history.RecordAsync(settings, job, link);
+            var restarted = new LinkHistory(Path.Combine(directory, "history.json"), credentials);
+            await restarted.LoadAsync(TestContext.Current.CancellationToken);
+            var entry = Assert.Single(restarted.Entries);
+            Assert.Equal(link.Url, await restarted.GetLinkAsync(entry));
+            Assert.DoesNotContain(link.Url, await File.ReadAllTextAsync(Path.Combine(directory, "history.json"), TestContext.Current.CancellationToken));
+            await restarted.MarkRevokedAsync(settings.Origin, settings.Owner, link.Share.Id);
+            Assert.Null(credentials.Read(entry.Account));
+            await Assert.ThrowsAsync<ClientException>(() => restarted.GetLinkAsync(entry));
+        }
+        finally
+        {
+            foreach (var entry in history.Entries) credentials.Delete(entry.Account);
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
     public void CredentialManagerRoundTripUsesDisposableAccount()
     {
         var store = new CredentialStore(); var account = "test:" + Guid.NewGuid().ToString("N");

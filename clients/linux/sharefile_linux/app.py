@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 import sys
+import time
+from datetime import datetime
 
 import gi
 gi.require_version("Gtk", "3.0")
@@ -153,6 +155,7 @@ class Application(Gtk.Application):
         outer.pack_start(self.notebook, True, True, 0)
         self.build_queue()
         self.build_settings()
+        self.build_history()
         self.notice = Gtk.Label(xalign=0, wrap=True, selectable=True)
         outer.pack_start(self.notice, False, False, 0)
         self.window.drag_dest_set(Gtk.DestDefaults.ALL, [Gtk.TargetEntry.new("text/uri-list", 0, 0)], Gdk.DragAction.COPY)
@@ -244,13 +247,109 @@ class Application(Gtk.Application):
         self.tray.set_tooltip_text("ShareFile — загрузить и поделиться")
         self.tray.connect("activate", lambda *_: self.show())
         self.tray_menu = Gtk.Menu()
-        for title, callback in (("Открыть ShareFile", self.show), ("Пауза всех", self.controller.pause_all), ("Выйти", self.stop)):
+        for title, callback in (("Открыть ShareFile", self.show), ("История ссылок", self.show_history), ("Пауза всех", self.controller.pause_all), ("Выйти", self.stop)):
             item = Gtk.MenuItem(label=title)
             item.connect("activate", lambda item, callback=callback: self.invoke(callback))
             self.tray_menu.append(item)
+        self.recent_menu = Gtk.Menu()
+        recent = Gtk.MenuItem(label="Недавние ссылки")
+        recent.set_submenu(self.recent_menu)
+        self.tray_menu.prepend(recent)
         self.tray_menu.show_all()
         self.tray.connect("popup-menu", lambda icon, button, timestamp:
                           self.tray_menu.popup(None, None, Gtk.StatusIcon.position_menu, icon, button, timestamp))
+
+    def show_history(self):
+        self.notebook.set_current_page(2)
+        self.show()
+
+    @staticmethod
+    def history_status(entry):
+        if entry["revoked"]:
+            return "Отозвана"
+        if entry["expires"] and entry["expires"] <= time.time():
+            return "Срок истёк"
+        return "Бессрочно" if not entry["expires"] else "До " + datetime.fromtimestamp(entry["expires"]).strftime("%d.%m.%Y %H:%M")
+
+    def build_history(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=12)
+        self.history_search = Gtk.SearchEntry(placeholder_text="Найти файл или папку в истории")
+        self.history_search.connect("search-changed", lambda *_: self.refresh_history())
+        page.pack_start(self.history_search, False, False, 0)
+        self.history_rows = Gtk.ListStore(str, str, str, str)
+        self.history_tree = Gtk.TreeView(model=self.history_rows)
+        for title, column in (("Файл или папка", 1), ("Создана", 2), ("Состояние", 3)):
+            item = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=column)
+            item.set_expand(column == 1)
+            item.set_resizable(True)
+            self.history_tree.append_column(item)
+        self.history_tree.get_selection().connect("changed", lambda *_: self.refresh_history_actions())
+        scroll = Gtk.ScrolledWindow()
+        scroll.add(self.history_tree)
+        page.pack_start(scroll, True, True, 0)
+        controls = Gtk.Box(spacing=8)
+        self.history_buttons = {}
+        for key, label, callback in (("copy", "Копировать ссылку", self.copy_history),
+                                     ("open", "Открыть ссылку", self.open_history),
+                                     ("revoke", "Отозвать ссылку", self.controller.revoke_history)):
+            self.history_buttons[key] = self.button(label, lambda callback=callback: callback(self.selected_history()), controls)
+        page.pack_start(controls, False, False, 0)
+        page.pack_start(Gtk.Label(xalign=0, wrap=True, label="История хранит до 200 ссылок. Показаны ссылки текущего аккаунта. Ссылки сохраняются в Secret Service. Очистка очереди сохраняет историю."), False, False, 0)
+        self.notebook.append_page(page, Gtk.Label(label="История ссылок"))
+
+    def selected_history(self):
+        model, iterator = self.history_tree.get_selection().get_selected()
+        return model[iterator][0] if iterator else ""
+
+    def refresh_history(self):
+        selected = self.selected_history()
+        self.history_rows.clear()
+        query = self.history_search.get_text().casefold().strip()
+        for entry in self._snapshot.get("history", []):
+            if query not in entry["name"].casefold():
+                continue
+            row = self.history_rows.append([entry["share_id"], entry["name"],
+                datetime.fromtimestamp(entry["created"]).strftime("%d.%m.%Y %H:%M"), self.history_status(entry)])
+            if entry["share_id"] == selected:
+                self.history_tree.get_selection().select_iter(row)
+        self.refresh_history_actions()
+
+    def refresh_history_actions(self):
+        entry = next((entry for entry in self._snapshot.get("history", []) if entry["share_id"] == self.selected_history()), None)
+        active = entry and not entry["revoked"] and (not entry["expires"] or entry["expires"] > time.time())
+        for key, button in self.history_buttons.items():
+            button.set_sensitive(bool(entry and (not entry["revoked"] if key == "revoke" else active)
+                                      and not self._snapshot.get("busy", False)
+                                      and (key != "revoke" or self._snapshot.get("connected", False))))
+
+    def copy_history(self, identity):
+        self.controller.history_link(identity, lambda url: self.controller.set_notice(
+            "Ссылка скопирована" if self.clipboard([url]) else "Не удалось скопировать ссылку"))
+
+    def open_history(self, identity):
+        self.controller.history_link(identity, self.open_url)
+
+    def refresh_recent(self):
+        if not hasattr(self, "recent_menu"):
+            return
+        for child in self.recent_menu.get_children():
+            self.recent_menu.remove(child)
+        for entry in self._snapshot.get("history", [])[:8]:
+            item = Gtk.MenuItem(label=entry["name"])
+            submenu = Gtk.Menu()
+            item.set_submenu(submenu)
+            active = not entry["revoked"] and (not entry["expires"] or entry["expires"] > time.time())
+            for title, callback in (("Копировать", self.copy_history), ("Открыть", self.open_history), ("Отозвать", self.controller.revoke_history)):
+                action = Gtk.MenuItem(label=title)
+                action.set_sensitive((not entry["revoked"] and self._snapshot.get("connected", False)) if title == "Отозвать" else active)
+                action.connect("activate", lambda _, callback=callback, identity=entry["share_id"]: self.invoke(lambda: callback(identity)))
+                submenu.append(action)
+            self.recent_menu.append(item)
+        if not self._snapshot.get("history"):
+            empty = Gtk.MenuItem(label="История пока пуста")
+            empty.set_sensitive(False)
+            self.recent_menu.append(empty)
+        self.recent_menu.show_all()
 
     def selected(self):
         model, iterator = self.tree.get_selection().get_selected()
@@ -287,6 +386,8 @@ class Application(Gtk.Application):
         self.pair_button.set_sensitive(bool(snapshot["pairing_url"]))
         self.message(snapshot["notice"])
         self.refresh_actions()
+        self.refresh_history()
+        self.refresh_recent()
         if not snapshot["connected"] and snapshot["pending_files"]:
             self.notebook.set_current_page(1)
             self.show()
@@ -309,7 +410,8 @@ class Application(Gtk.Application):
                 enabled = {"pause": status in ("queued", "uploading"),
                            "resume": connected and status in ("paused", "error"),
                            "remove": status not in ("uploading", "sharing", "cancelling") and (connected or status in ("done", "uploaded", "uncertain")),
-                           "copy": bool(job["link"]), "new": connected and status in ("done", "uploaded", "uncertain"),
+                           "copy": bool(job["link"]) or any(entry["share_id"] == job["share_id"] and not entry["revoked"]
+                               and (not entry["expires"] or entry["expires"] > time.time()) for entry in self._snapshot.get("history", [])), "new": connected and status in ("done", "uploaded", "uncertain"),
                            "revoke": connected and bool(job["share_id"])}[key]
             button.set_sensitive(enabled and (not busy or key == "pause"))
         self.detail.set_text(job["message"] if job else "Перетащите файлы или папку сюда. Для папки создаётся одна ссылка")
@@ -378,6 +480,9 @@ class Application(Gtk.Application):
 
     def copy_selected(self, identity):
         job = next(job for job in self._snapshot["jobs"] if job["id"] == identity)
+        if not job["link"]:
+            self.copy_history(job["share_id"])
+            return
         self.controller.set_notice("Ссылка скопирована" if self.clipboard([job["link"]]) else "Не удалось скопировать ссылку")
 
     def new_link(self, identity):

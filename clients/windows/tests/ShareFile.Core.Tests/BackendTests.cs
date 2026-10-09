@@ -147,7 +147,10 @@ public sealed class BackendTests
             var stateStore = new JsonStateStore(stateFile);
             await stateStore.SaveAsync(new ClientState { Settings = new ClientSettings { Origin = origin, Owner = session.User.Id, Folder = folder.Id },
                 Jobs = [directoryJob with { Status = UploadStatus.Uploading, Batch = directoryJob.Id }] }, ct);
-            await using (var queue = new UploadQueue(stateStore, engine))
+            var historySecrets = new MemoryLinkSecrets();
+            var historyPath = Path.Combine(root, "client", "history.json");
+            var history = new LinkHistory(historyPath, historySecrets);
+            await using (var queue = new UploadQueue(stateStore, engine, history))
             {
                 var completions = new List<BatchCompletion>(); queue.Completed += completions.Add;
                 await queue.LoadAsync(ct); await queue.AttachAsync(api, "", ct);
@@ -168,6 +171,17 @@ public sealed class BackendTests
                 Assert.Equal(JsonSerializer.Serialize(done.Directory), JsonSerializer.Serialize((await stateStore.LoadAsync(ct)).Jobs[0].Directory));
                 var persisted = await File.ReadAllTextAsync(stateFile, ct);
                 Assert.DoesNotContain(token, persisted); Assert.DoesNotContain("/s/", persisted);
+                var restartedHistory = new LinkHistory(historyPath, historySecrets);
+                await restartedHistory.LoadAsync(ct);
+                var sent = Assert.Single(restartedHistory.Entries);
+                Assert.Equal(done.Link, await restartedHistory.GetLinkAsync(sent));
+                await queue.RemoveAsync(done.Id, ct);
+                Assert.Empty(queue.State.Jobs);
+                await queue.RevokeHistoryAsync(sent, ct);
+                using var revokedFolder = await http.GetAsync(done.Link, ct);
+                Assert.Equal(HttpStatusCode.NotFound, revokedFolder.StatusCode);
+                Assert.True(Assert.Single(history.Entries).Revoked);
+                Assert.DoesNotContain("/s/", await File.ReadAllTextAsync(historyPath, ct));
             }
             var changed = await UploadEngine.PrepareAsync(tree, folder.Id, ct);
             await File.WriteAllTextAsync(Path.Combine(tree, "new.txt"), "changed", ct);

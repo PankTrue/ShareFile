@@ -151,6 +151,20 @@ class BackendTests(unittest.TestCase):
         self.assertNotIn("linux-link-only-password", self.store.path.read_text())
         controller.revoke(first["id"]).result(timeout=10)
         self.assertEqual(self.http("GET", urlsplit(protected).path)[0], 404)
+        # Original capabilities survive new-link creation, clearing the queue and restart.
+        self.assertEqual(len(controller.snapshot()["history"]), 3)
+        self.assertTrue(controller.snapshot()["history"][0]["revoked"])
+        controller.clear_finished().result(timeout=5)
+        controller.close().result(timeout=5)
+        controller = self.new_controller()
+        self.assertEqual(controller.snapshot()["jobs"], [])
+        restored = []
+        controller.history_link(first["share_id"], restored.append).result(timeout=5)
+        self.assertEqual(restored, [first["link"]])
+        self.assertEqual(self.http("GET", urlsplit(restored[0]).path)[0], 200)
+        controller.revoke_history(first["share_id"]).result(timeout=5)
+        self.assertEqual(self.http("GET", urlsplit(restored[0]).path)[0], 404)
+        self.assertNotIn("/s/", controller.history.path.read_text())
         devices = json.loads(self.http("GET", "/api/v1/devices", headers=self.auth)[2])
         self.assertEqual(self.http("DELETE", "/api/v1/devices/" + devices[0]["id"], headers=self.auth)[0], 204)
         with self.assertRaises(ClientError) as error:

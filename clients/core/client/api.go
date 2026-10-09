@@ -280,7 +280,9 @@ type ShareOptions struct {
 type Link struct {
 	URL   string `json:"url"`
 	Share struct {
-		ID string `json:"id"`
+		ID        string `json:"id"`
+		CreatedAt int64  `json:"created_at"`
+		ExpiresAt *int64 `json:"expires_at,omitempty"`
 	} `json:"share"`
 }
 

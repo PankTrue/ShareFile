@@ -199,6 +199,7 @@ internal sealed class FakeApi : IShareFileApi
     public bool LosePatch { get; set; }
     public bool LoseShare { get; init; }
     public bool CancelError { get; init; }
+    public bool RevokeError { get; init; }
     public int CreateError { get; init; }
     public int CreatedObjects { get; private set; }
     public int ShareCalls { get; private set; }
@@ -236,5 +237,5 @@ internal sealed class FakeApi : IShareFileApi
         if (LoseShare) throw new ClientException("Не удалось получить ответ");
         return Task.FromResult(new ShareLink(Origin + "/s/" + UploadEngine.NewId(), new ShareIdentity(UploadEngine.NewId())));
     }
-    public Task RevokeShareAsync(string id, CancellationToken ct) => Task.CompletedTask;
+    public Task RevokeShareAsync(string id, CancellationToken ct) => RevokeError ? throw new ApiException(403) : Task.CompletedTask;
 }

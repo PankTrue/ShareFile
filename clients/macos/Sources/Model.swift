@@ -122,6 +122,10 @@ struct UploadCompletion: Equatable {
     private var pendingFiles: [URL] = []
     private var copiedBatches = Set<String>()
     private var preparingBatches = Set<String>()
+    let history: LinkHistory
+    @Published var historySearch = ""
+    @Published var revokingHistory = Set<String>()
+    var sentLinks: [SentLink] { history.forAccount(settings.origin, settings.owner) }
     private let stateURL: URL
     private let writeClipboard: (String) -> Bool
     var onUploadCompletion: ((UploadCompletion) -> Void)?
@@ -130,11 +134,13 @@ struct UploadCompletion: Equatable {
     var activeCount: Int { settings.uploads.filter { ["queued", "uploading", "sharing"].contains($0.status) }.count }
     var keyAccount: String { "device:" + settings.origin }
 
-    init(stateURL: URL, writeClipboard: @escaping (String) -> Bool = {
+    init(stateURL: URL, history: LinkHistory? = nil, writeClipboard: @escaping (String) -> Bool = {
         NSPasteboard.general.clearContents()
         return NSPasteboard.general.setString($0, forType: .string)
     }) {
         self.stateURL = stateURL
+        self.history = history ?? LinkHistory(path: stateURL.deletingLastPathComponent().appendingPathComponent("history.json"))
+        notice = self.history.loadError
         self.writeClipboard = writeClipboard
         if let data = try? Data(contentsOf: stateURL), let saved = try? JSONDecoder().decode(Preferences.self, from: data) {
             settings = saved
@@ -335,13 +341,49 @@ struct UploadCompletion: Equatable {
         guard let job = settings.uploads.first(where: { $0.id == id }), connected else { return }
         update(id) { $0.status = "sharing"; $0.message = "" }
         let call = BridgeCall(); activeCall = call
+        let link: String, shareID: String
+        var created: Date?, expires: Date?
         do {
             let result = try await request("share", ["job": job.checkpoint, "options": ["days": job.days, "never": job.never, "password": password]], call: call) as? [String: Any] ?? [:]
-            guard let link = result["url"] as? String else { throw AppFailure(message: "Сервер не вернул ссылку") }
-            let shareID = (result["share"] as? [String: Any])?["id"] as? String ?? ""
-            update(id) { $0.status = "done"; $0.link = link; $0.shareID = shareID }
-            finishBatch(job.batch)
-        } catch { update(id) { $0.status = "uncertain"; $0.message = error.localizedDescription + ". Сервер мог создать ссылку; проверьте Web UI перед повтором." } }
+            guard let url = result["url"] as? String, let share = result["share"] as? [String: Any],
+                  let identity = share["id"] as? String, LinkHistory.validID(identity) else { throw AppFailure(message: "Сервер не вернул ссылку") }
+            link = url; shareID = identity
+            created = (share["created_at"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
+            expires = (share["expires_at"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
+        } catch {
+            update(id) { $0.status = "uncertain"; $0.message = error.localizedDescription + ". Сервер мог создать ссылку; проверьте Web UI перед повтором." }
+            return
+        }
+        var message = ""
+        do { try await history.record(origin: settings.origin, owner: settings.owner, job: job, url: link, shareID: shareID, created: created, expires: expires) }
+        catch { message = "Ссылка создана, но не сохранена в защищённой истории. Скопируйте её из очереди"; notice = message }
+        update(id) { $0.status = "done"; $0.link = link; $0.shareID = shareID; $0.message = message }
+        finishBatch(job.batch)
+    }
+    func copyHistory(_ entry: SentLink) {
+        Task { do { _ = copy(try await history.link(entry).absoluteString) } catch { notice = error.localizedDescription } }
+    }
+    func openHistory(_ entry: SentLink) {
+        Task { do { NSWorkspace.shared.open(try await history.link(entry)) } catch { notice = error.localizedDescription } }
+    }
+    func canRevokeHistory(_ entry: SentLink) -> Bool {
+        connected && settings.origin == entry.origin && settings.owner == entry.owner && !entry.revoked && !revokingHistory.contains(entry.account)
+    }
+    func revokeHistory(_ entry: SentLink) {
+        guard canRevokeHistory(entry) else { notice = "Для отзыва подключите тот же сервер и аккаунт"; return }
+        revokingHistory.insert(entry.account)
+        let origin = settings.origin, owner = settings.owner, credential = token
+        Task {
+            defer { revokingHistory.remove(entry.account) }
+            do {
+                _ = try await BridgeCall().run(["operation": "revoke_share", "origin": origin, "token": credential, "share_id": entry.shareID])
+                if settings.origin == origin && settings.owner == owner {
+                    for job in settings.uploads where job.shareID == entry.shareID { update(job.id) { $0.link = ""; $0.shareID = "" } }
+                }
+                do { try await history.markRevoked(entry); notice = "Ссылка отозвана" }
+                catch { notice = "Ссылка отозвана на сервере, но локальная история не сохранена. Проверьте Keychain и диск" }
+            } catch { notice = "Отзыв не подтверждён: " + error.localizedDescription }
+        }
     }
     private func finishBatch(_ id: String) {
         guard !preparingBatches.contains(id), !copiedBatches.contains(id) else { return }

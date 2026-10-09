@@ -11,7 +11,8 @@ public sealed record PairRequest(string Id, string Secret,
     [property: JsonPropertyName("expires_at")] long ExpiresAt);
 public sealed record Pairing(PairRequest Request,
     [property: JsonPropertyName("verification_url")] string VerificationUrl, int Interval);
-public sealed record ShareIdentity(string Id);
+public sealed record ShareIdentity(string Id, [property: JsonPropertyName("created_at")] long CreatedAt = 0,
+    [property: JsonPropertyName("expires_at")] long? ExpiresAt = null);
 public sealed record ShareLink(string Url, ShareIdentity Share);
 public sealed record ShareOptions(int Days = 7, bool Never = false, string Password = "");
 public sealed record UploadHead(long Offset, long Length, long ChunkSize, string FileId, string State);
