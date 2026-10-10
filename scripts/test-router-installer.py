@@ -51,12 +51,18 @@ class RouterInstallerTests(unittest.TestCase):
     def run_script(self, script, *args):
         return subprocess.run(["sh", str(script), *args], capture_output=True, text=True, env=dict(os.environ, SHAREFILE_REPOSITORY="PankTrue/ShareFile"))
 
-    def download_fixture(self, *, bad_checksum=False, unsafe=False):
+    def download_fixture(self, *, bad_checksum=False, unsafe=False, release=None, healthy=True):
         assets = self.base / "assets"
         assets.mkdir()
         archive = assets / "sharefile-router.tar.gz"
         with tarfile.open(archive, "w:gz", format=tarfile.USTAR_FORMAT) as bundle:
-            for name, content in [("first-install.sh", f"#!/bin/sh\necho first > '{self.marker}'\n"), ("update.sh", f"#!/bin/sh\necho update > '{self.marker}'\n")]:
+            scripts = [("first-install.sh", f"#!/bin/sh\necho first > '{self.marker}'\n")]
+            if release is None:
+                scripts.append(("update.sh", f"#!/bin/sh\necho update > '{self.marker}'\n"))
+            else:
+                for path in sorted(release.iterdir()):
+                    bundle.add(path, arcname=path.name)
+            for name, content in scripts:
                 data = content.encode()
                 info = tarfile.TarInfo(name)
                 info.size = len(data)
@@ -73,6 +79,8 @@ class RouterInstallerTests(unittest.TestCase):
 args = sys.argv[1:]
 if "--head" in args:
     print("https://github.com/PankTrue/ShareFile/releases/tag/v1.2.3", end="")
+elif args[-1].endswith("/readyz"):
+    sys.exit({0 if healthy else 22})
 else:
     source = pathlib.Path({str(assets)!r}) / args[-1].rsplit("/", 1)[-1]
     shutil.copyfile(source, args[args.index("--output") + 1])
@@ -123,24 +131,107 @@ else:
         init = self.opt / "etc/init.d"
         init.mkdir()
         old_init = init / "S90sharefile"
-        old_init.write_text("#!/bin/sh\nexit 0\n")
+        lifecycle = f"printf 'old %s\\n' \"$1\" >> '{self.base / 'lifecycle'}'\n"
+        old_init.write_text("#!/bin/sh\n" + lifecycle + "exit 0\n")
         old_init.chmod(0o755)
         (self.opt / "sbin/sharefile").write_text("old binary")
         data = self.base / "user-data"
         data.mkdir()
         (data / "account-and-file").write_text("preserve existing data")
+        (data / ".sharefile-volume").write_text("existing-volume\n")
+        for name in ("metadata", "objects", "uploads"):
+            (data / name).mkdir()
+        (data / "metadata/sharefile.db").write_bytes(b"existing account and link metadata")
+        (data / "objects/existing-file").write_bytes(b"existing stored file")
+        (data / "uploads/partial-upload").write_bytes(b"existing unfinished upload")
+        tls = self.opt / "etc/sharefile"
+        tls.mkdir()
+        for name in ("lan-ca.pem", "lan-ca-key.pem", "admin-cert.pem", "admin-key.pem"):
+            (tls / name).write_text(f"existing {name}")
+            (tls / name).chmod(0o600)
         config = {"data_dir": str(data), "volume_id": "existing-volume", "public_addr": "127.0.0.1:8080", "public_url": "https://192.168.1.1:8081", "web_dir": str(web)}
         config_path = self.opt / "etc/sharefile.json"
         config_path.write_text(json.dumps(config))
+        config_path.chmod(0o600)
         release = self.base / "release"
         (release / "dist").mkdir(parents=True)
         (release / "dist/index.html").write_text("new UI")
         (release / "service").mkdir()
         (release / "service/run").write_text("new run")
         (release / "sharefile-linux-arm64").write_text("#!/bin/sh\nexit 0\n# new binary\n")
-        (release / "S90sharefile").write_text("#!/bin/sh\nexit 0\n# new init\n")
+        lifecycle = f"printf 'new %s\\n' \"$1\" >> '{self.base / 'lifecycle'}'\n"
+        (release / "S90sharefile").write_text("#!/bin/sh\n" + lifecycle + "exit 0\n# new init\n")
         self.command("curl", "exit 0" if healthy else "exit 22")
         return self.script("update.sh", release / "update.sh"), config_path, data
+
+    def protected_files(self, config, data):
+        files = [config, *(self.opt / "etc/sharefile").iterdir(), *(path for path in data.rglob("*") if path.is_file())]
+        return {path: (path.read_bytes(), path.stat().st_mode) for path in files}
+
+    def test_downloaded_release_can_be_installed_twice_over_existing_application(self):
+        updater, config, data = self.update_fixture(healthy=True)
+        protected = self.protected_files(config, data)
+        web = self.opt / "share/sharefile/web"
+        (web / "obsolete-asset.js").write_text("old hashed asset")
+        installer = self.download_fixture(release=updater.parent)
+        for _ in range(2):
+            result = self.run_script(installer)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("v1.2.3 installed", result.stdout)
+            self.assertEqual(self.protected_files(config, data), protected)
+            self.assertFalse(self.marker.exists(), "Reinstallation must not run first-install.sh")
+            self.assertEqual((web / "index.html").read_text(), "new UI")
+            self.assertFalse((web / "obsolete-asset.js").exists())
+            self.assertIn("new binary", (self.opt / "sbin/sharefile").read_text())
+            self.assertTrue(os.access(self.opt / "sbin/sharefile", os.X_OK))
+        backups = sorted((self.opt / "var/backups/sharefile").glob("release.*"))
+        self.assertEqual(len(backups), 2)
+        self.assertEqual(sorted((backup / "web/index.html").read_text() for backup in backups), ["new UI", "old UI"])
+        self.assertEqual((self.base / "lifecycle").read_text().splitlines(), [
+            "old stop", "new start", "new check", "new stop", "new start", "new check",
+        ])
+
+    def test_downloaded_update_failure_is_reported_and_rolls_back(self):
+        updater, config, data = self.update_fixture(healthy=False)
+        protected = self.protected_files(config, data)
+        installer = self.download_fixture(release=updater.parent, healthy=False)
+        result = self.run_script(installer)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("restoring previous application files", result.stderr)
+        self.assertNotIn("v1.2.3 installed", result.stdout)
+        self.assertFalse(self.marker.exists())
+        self.assertEqual(self.protected_files(config, data), protected)
+        self.assertEqual((self.opt / "sbin/sharefile").read_text(), "old binary")
+        self.assertEqual((self.opt / "share/sharefile/web/index.html").read_text(), "old UI")
+        self.assertEqual((self.opt / "etc/sharefile-service/run").read_text(), "old run")
+        self.assertEqual((self.base / "lifecycle").read_text().splitlines(), [
+            "old stop", "new start", "new stop", "old start",
+        ])
+
+    def test_incomplete_existing_installation_is_not_reinitialized(self):
+        updater, config, data = self.update_fixture(healthy=True)
+        protected = self.protected_files(config, data)
+        (self.opt / "etc/sharefile-service/run").unlink()
+        installer = self.download_fixture(release=updater.parent)
+        result = self.run_script(installer)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Incomplete existing installation", result.stderr)
+        self.assertFalse(self.marker.exists())
+        self.assertEqual(self.protected_files(config, data), protected)
+        self.assertEqual((self.opt / "sbin/sharefile").read_text(), "old binary")
+        self.assertFalse((self.base / "lifecycle").exists())
+
+    def test_incompatible_update_binary_leaves_existing_application_running(self):
+        script, config, data = self.update_fixture(healthy=True)
+        protected = self.protected_files(config, data)
+        (script.parent / "sharefile-linux-arm64").write_text("#!/bin/sh\nexit 1\n")
+        result = self.run_script(script)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("binary cannot run", result.stderr)
+        self.assertEqual(self.protected_files(config, data), protected)
+        self.assertEqual((self.opt / "sbin/sharefile").read_text(), "old binary")
+        self.assertEqual((self.opt / "share/sharefile/web/index.html").read_text(), "old UI")
+        self.assertFalse((self.base / "lifecycle").exists())
 
     def test_update_preserves_config_data_and_previous_application(self):
         script, config, data = self.update_fixture(healthy=True)
