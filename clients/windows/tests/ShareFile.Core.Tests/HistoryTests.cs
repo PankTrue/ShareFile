@@ -126,9 +126,13 @@ public sealed class HistoryTests : IDisposable
     {
         Directory.CreateDirectory(PathToHistory);
         var history = new LinkHistory(PathToHistory, _secrets);
-        await Assert.ThrowsAnyAsync<IOException>(() => history.RecordAsync(Settings, Job, Link));
+        var error = await Record.ExceptionAsync(() => history.RecordAsync(Settings, Job, Link));
+        // Replacing a directory reports an I/O error on Unix and access denial on Windows.
+        Assert.True(error is IOException or UnauthorizedAccessException,
+            $"Expected an index write failure, got {error?.GetType().FullName ?? "no exception"}");
         Assert.Empty(history.Entries);
         Assert.Empty(_secrets.Values);
+        Assert.Empty(Directory.EnumerateFiles(_directory, ".history-*"));
     }
 
     [Fact]
