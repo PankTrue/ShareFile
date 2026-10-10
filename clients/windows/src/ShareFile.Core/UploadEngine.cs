@@ -95,6 +95,7 @@ public sealed partial class UploadEngine
     public async Task<UploadJob> UploadAsync(IShareFileApi api, UploadJob job,
         Func<UploadJob, CancellationToken, Task> checkpoint, CancellationToken ct)
     {
+        job = job with { Transferred = 0 };
         Validate(job);
         if (job.Directory is not null) return await UploadDirectoryAsync(api, job, checkpoint, ct).ConfigureAwait(false);
         return await UploadFileAsync(api, job, checkpoint, ct).ConfigureAwait(false);
@@ -103,6 +104,7 @@ public sealed partial class UploadEngine
     private async Task<UploadJob> UploadFileAsync(IShareFileApi api, UploadJob job,
         Func<UploadJob, CancellationToken, Task> checkpoint, CancellationToken ct, string? directoryRoot = null)
     {
+        job = job with { Transferred = 0 };
         await using var file = directoryRoot is null ? Open(job.Source) : OpenDirectoryFile(directoryRoot, job.Source);
         CheckSource(file, job);
         if (await FingerprintAsync(file, job.Size, job.ModifiedTicks, ct).ConfigureAwait(false) != job.Fingerprint)
@@ -116,6 +118,7 @@ public sealed partial class UploadEngine
         }
         var failures = 0;
         var stalled = 0;
+        var reconciled = false;
         while (true)
         {
             ct.ThrowIfCancellationRequested();
@@ -123,7 +126,8 @@ public sealed partial class UploadEngine
             if (head.Length != job.Size || head.FileId != job.FileId || head.Offset < 0 || head.Offset > job.Size || head.ChunkSize < 1)
                 throw new ClientException("Состояние загрузки не соответствует исходному файлу");
             var previous = job.Offset;
-            job = job with { Offset = head.Offset };
+            job = job with { Offset = head.Offset, Transferred = job.Transferred + (reconciled ? Math.Max(0, head.Offset - previous) : 0) };
+            reconciled = true;
             await checkpoint(job, ct).ConfigureAwait(false);
             if (head.State == "complete")
             {

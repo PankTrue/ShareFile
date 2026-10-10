@@ -126,6 +126,7 @@ func (c *Client) createDirectory(ctx context.Context, parent, name, key string) 
 	return out, err
 }
 func (c *Client) UploadDirectory(ctx context.Context, j *DirectoryJob, progress func(DirectoryJob)) error {
+	j.Transferred = 0
 	if j.Directory == nil || !identifier.MatchString(j.ID) {
 		return errors.New("Некорректное состояние каталога")
 	}
@@ -211,10 +212,12 @@ func (c *Client) UploadDirectory(ctx context.Context, j *DirectoryJob, progress 
 			continue
 		}
 		previousUpload, previousFile := file.Job.Upload, file.Job.FileID
+		transferred := j.Transferred
 		err = c.upload(ctx, &file.Job, func(updated Job) {
 			resourceChanged := updated.Upload != previousUpload || updated.FileID != previousFile
 			previousUpload, previousFile = updated.Upload, updated.FileID
 			file.Job = updated
+			j.Transferred = transferred + updated.Transferred
 			j.Offset = 0
 			for _, f := range j.Directory.Files {
 				j.Offset += f.Job.Offset

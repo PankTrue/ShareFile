@@ -102,6 +102,33 @@ const file = () => new File(['1234567890'], 'отчёт.txt', { lastModified: 12
 beforeEach(() => vi.stubGlobal('window', { location: { origin: 'https://private.example' } }));
 afterEach(() => vi.unstubAllGlobals());
 describe('Resumable uploads', () => {
+  it('retains completed siblings of an unfinished selection after reload', () => {
+    const storage = new MemoryStorage();
+    const base = {
+      key: 'key',
+      name: 'file.txt',
+      folder: folderID,
+      folderName: 'Uploads',
+      modified: 1,
+      fingerprint: '',
+      size: 100,
+      offset: 100,
+    };
+    storage.setItem(
+      'sharefile:uploads:v1:alice',
+      JSON.stringify([
+        { ...base, id: 'old', batch: 'old', status: 'complete' },
+        { ...base, id: 'finished', batch: 'current', status: 'complete' },
+        { ...base, id: 'remaining', batch: 'current', status: 'paused', size: 900, offset: 400 },
+      ]),
+    );
+    const manager = new UploadManager('alice', vi.fn(), fixture().transport, storage);
+    expect(manager.getSnapshot().map((job) => [job.id, job.status])).toEqual([
+      ['finished', 'complete'],
+      ['remaining', 'reselect'],
+    ]);
+    expect(manager.rate('remaining')).toBe(0);
+  });
   it('uses bounded server-sized chunks, Unicode metadata and same-origin paths', async () => {
     const server = fixture(),
       complete = vi.fn(),

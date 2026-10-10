@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useSyncExternalStore } from 'react';
+import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react';
 import { UploadManager } from '../uploads';
 import { bytes } from '../utils';
 import { errorMessage } from '../api';
@@ -6,6 +6,7 @@ import { Icon } from './Icon';
 import { Button, ErrorBox, IconButton } from './UI';
 import { copy } from '../utils';
 import { directoryFromFiles } from '../directories';
+import { progressSummary, selectionJobs, transferDetails } from '../progress';
 
 export const UploadContext = createContext<UploadManager | null>(null);
 export function useUploads() {
@@ -19,6 +20,27 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
   const [error, setError] = useState('');
   const [copiedID, setCopiedID] = useState('');
   const active = jobs.filter((job) => job.status !== 'complete').length;
+  const uploading = jobs.some((job) => job.status === 'uploading');
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!uploading) return;
+    const timer = window.setInterval(() => tick((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [uploading]);
+  const selection = selectionJobs(jobs);
+  const rate = selection.reduce((sum, job) => sum + manager.rate(job.id), 0);
+  const summary = progressSummary(selection, rate);
+  const status = selection.every((job) => job.status === 'complete')
+    ? 'Загрузка завершена'
+    : selection.some((job) => ['error', 'reselect', 'uncertain'].includes(job.status))
+      ? 'Требуется действие · Оставшееся время —'
+      : selection.some((job) => job.status === 'paused')
+        ? 'Приостановлено · Оставшееся время —'
+        : summary.offset === summary.size
+          ? 'Данные переданы · Завершаем загрузку…'
+          : uploading
+            ? transferDetails(rate, summary.seconds)
+            : 'В очереди · Оставшееся время —';
   async function action(work: () => Promise<void>) {
     setError('');
     try {
@@ -38,6 +60,15 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
         </span>
         <Icon name={expanded ? 'close' : 'chevron'} />
       </button>
+      <div className="upload-panel-summary" aria-label="Общий прогресс подборки">
+        <strong>Общий прогресс · {summary.percent}%</strong>
+        <span>
+          {bytes(summary.offset)} из {bytes(summary.size)} · Готово {summary.completed} из{' '}
+          {selection.length}
+        </span>
+        <progress value={summary.percent} max={100} aria-label="Общий прогресс загрузки" />
+        <span>{status}</span>
+      </div>
       {expanded && (
         <div className="upload-list">
           <ErrorBox message={error} />
@@ -104,6 +135,16 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
                             ? 'Приостановлено'
                             : job.error}
               </small>
+              {job.status === 'uploading' && job.offset < job.size && (
+                <small>
+                  {transferDetails(
+                    manager.rate(job.id),
+                    manager.rate(job.id) > 0
+                      ? Math.ceil((job.size - job.offset) / manager.rate(job.id))
+                      : null,
+                  )}
+                </small>
+              )}
               {job.link && (
                 <div className="generated-link">
                   <input
@@ -175,11 +216,6 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
               )}
             </div>
           ))}
-        </div>
-      )}
-      {!expanded && (
-        <div className="upload-panel-summary">
-          {active ? `${active} в очереди · можно продолжить после паузы` : 'Все файлы сохранены'}
         </div>
       )}
     </aside>

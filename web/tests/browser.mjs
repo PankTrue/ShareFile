@@ -194,11 +194,51 @@ try {
   await user.reload();
   await visible(user.getByRole('button', { name: 'Загрузить файлы', exact: true }));
   const payload = Buffer.alloc(2300000, 'browser-test-content\n');
+  // Hold the second chunk to inspect the UI between real server confirmations.
+  let releaseProgress;
+  const progressGate = new Promise((resolve) => {
+    releaseProgress = resolve;
+  });
+  let progressChunks = 0;
+  await user.route('**/api/v1/uploads/*', async (route) => {
+    if (route.request().headers()['x-http-method-override'] !== 'PATCH') return route.continue();
+    progressChunks++;
+    if (progressChunks === 2) await progressGate;
+    const response = await route.fetch();
+    if (progressChunks === 1) await new Promise((resolve) => setTimeout(resolve, 400));
+    await route.fulfill({ response });
+  });
   await user
     .getByLabel('Выбрать файлы для загрузки')
     .setInputFiles({ name: 'отчёт.txt', mimeType: 'text/plain', buffer: payload });
+  const totalProgress = user.getByLabel('Общий прогресс подборки', { exact: true });
+  await visible(totalProgress.getByText(/\/с · Осталось ≈/));
+  const percentage = Number(
+    await user
+      .getByRole('progressbar', { name: 'Общий прогресс загрузки', exact: true })
+      .getAttribute('value'),
+  );
+  assert(percentage > 0 && percentage < 100);
+  assert.match(await totalProgress.innerText(), /Готово 0 из 1/);
+  await user.screenshot({ path: join(screenshots, 'upload-progress-desktop.png'), fullPage: true });
+  await user.locator('.upload-panel-heading').click();
+  await visible(totalProgress);
+  await user.setViewportSize({ width: 390, height: 844 });
+  assert(await totalProgress.isVisible());
+  assert(await user.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+  const mobileProgressBounds = await totalProgress.boundingBox();
+  assert(mobileProgressBounds.x >= 0 && mobileProgressBounds.x + mobileProgressBounds.width <= 390);
+  assert(
+    mobileProgressBounds.y >= 0 && mobileProgressBounds.y + mobileProgressBounds.height <= 844,
+  );
+  await user.screenshot({ path: join(screenshots, 'upload-progress-mobile.png') });
+  await user.setViewportSize({ width: 1440, height: 1000 });
+  await user.locator('.upload-panel-heading').click();
+  releaseProgress();
   await visible(user.getByRole('button', { name: 'отчёт.txt', exact: true }));
   await visible(user.getByText('Сохранён в хранилище', { exact: true }));
+  assert.match(await totalProgress.innerText(), /Готово 1 из 1/);
+  await user.unroute('**/api/v1/uploads/*');
   const href = await user
     .getByRole('link', { name: 'Скачать отчёт.txt', exact: true })
     .getAttribute('href');
@@ -237,6 +277,7 @@ try {
     });
   await user.getByRole('dialog').getByRole('button', { name: 'Загрузить замену' }).click();
   await visible(user.getByText('Сохранён в хранилище', { exact: true }).nth(1));
+  await user.locator('.upload-panel-heading').click();
   await user.getByRole('button', { name: 'Обновить файлы' }).click();
   const replacement = await user
     .getByRole('link', { name: 'Скачать Документ.txt', exact: true })

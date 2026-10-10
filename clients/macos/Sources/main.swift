@@ -176,7 +176,13 @@ import SwiftUI
     }
 }
 
+if CommandLine.arguments.contains("--progress-test") {
+    do { try verifyTransferProgress(); print("PASS: transfer rate, stalled/resumed estimates, byte-weighted batches, paused ETA and empty files"); exit(0) }
+    catch { fputs("FAIL: \(error.localizedDescription)\n", stderr); exit(1) }
+}
 if CommandLine.arguments.contains("--self-test") {
+    do { try verifyTransferProgress() }
+    catch { fputs("FAIL: \(error.localizedDescription)\n", stderr); exit(1) }
     do {
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("ShareFile-self-test-" + UUID().uuidString))
         let expected = [URL(fileURLWithPath: "/tmp/Отчёт с пробелами.pdf"), URL(fileURLWithPath: "/tmp/日本語.txt")]

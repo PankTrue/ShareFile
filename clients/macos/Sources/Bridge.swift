@@ -56,7 +56,10 @@ final class BridgeCall: @unchecked Sendable {
                         buffer.removeSubrange(...newline)
                         guard let event = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any] else { continue }
                         switch event["type"] as? String {
-                        case "progress": if let job = event["job"] as? [String: Any] { progress(job) }
+                        case "progress": if var job = event["job"] as? [String: Any] {
+                            job["transferred"] = event["transferred"] ?? 0
+                            progress(job)
+                        }
                         case "result": final = event["result"] ?? NSNull()
                         case "error": failure = AppFailure(message: event["error"] as? String ?? "Ошибка ядра")
                         default: break

@@ -299,7 +299,7 @@ class BridgeTests(unittest.TestCase):
             events = []
             result = BridgeCall(helper).run({"token": "stdin-only"}, events.append)
             self.assertTrue(result["ok"])
-            self.assertEqual(events, [{"offset": 1}])
+            self.assertEqual(events, [{"offset": 1, "transferred": 0}])
 
     def test_cancel_terminates_blocked_process(self):
         with tempfile.TemporaryDirectory() as directory:

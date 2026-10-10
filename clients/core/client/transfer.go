@@ -28,6 +28,8 @@ type Job struct {
 	Upload      string `json:"upload"`
 	FileID      string `json:"file_id"`
 	Offset      int64  `json:"offset"`
+	// Bytes confirmed during this run, excluding offsets recovered before sending.
+	Transferred int64 `json:"-"`
 }
 
 func randomID() string {
@@ -169,6 +171,7 @@ func (c *Client) Upload(ctx context.Context, j *Job, progress func(Job)) error {
 	return c.upload(ctx, j, progress, os.Open)
 }
 func (c *Client) upload(ctx context.Context, j *Job, progress func(Job), open func(string) (*os.File, error)) error {
+	j.Transferred = 0
 	if err := validateJob(*j); err != nil {
 		return err
 	}
@@ -202,6 +205,7 @@ func (c *Client) upload(ctx context.Context, j *Job, progress func(Job), open fu
 		progress(*j)
 	}
 	failures := 0
+	reconciled := false
 	for {
 		var cp checkpoint
 		err = retry(ctx, func() error { var e error; cp, e = c.head(ctx, j.Upload); return e })
@@ -211,6 +215,10 @@ func (c *Client) upload(ctx context.Context, j *Job, progress func(Job), open fu
 		if cp.Length != j.Size || cp.FileID != j.FileID {
 			return errors.New("Состояние загрузки не соответствует исходному файлу")
 		}
+		if reconciled && cp.Offset > j.Offset {
+			j.Transferred += cp.Offset - j.Offset
+		}
+		reconciled = true
 		j.Offset = cp.Offset
 		progress(*j)
 		if cp.State == "complete" {

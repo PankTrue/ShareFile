@@ -278,6 +278,21 @@ class BackendTests(unittest.TestCase):
         self.assertNotIn(self.token, self.store.path.read_text())
         self.assertNotIn("/s/", self.store.path.read_text())
 
+    def test_directory_rate_counter_accumulates_files_and_resets_on_resume(self):
+        source = self.directory_source()
+        prepared = self.call("prepare_directory", source=str(source), parent=self.folder)
+        events = []
+        result = BridgeCall(self.helper).run({"operation": "upload_directory", "origin": self.origin,
+            "token": self.token, "directory_job": prepared}, events.append)
+        counters = [event["transferred"] for event in events]
+        self.assertEqual(counters, sorted(counters))
+        self.assertEqual(counters[-1], prepared["size"])
+        self.assertNotIn("transferred", json.dumps(result))
+        events.clear()
+        BridgeCall(self.helper).run({"operation": "upload_directory", "origin": self.origin,
+            "token": self.token, "directory_job": result}, events.append)
+        self.assertTrue(all(event["transferred"] == 0 for event in events))
+
     def test_directory_lost_creates_and_restart_resume_keep_original_ids(self):
         source = self.directory_source()
         prepared = self.call("prepare_directory", source=str(source), parent=self.folder)

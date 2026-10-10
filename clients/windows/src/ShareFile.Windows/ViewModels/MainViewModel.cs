@@ -8,12 +8,13 @@ using ShareFile.Windows.Platform;
 
 namespace ShareFile.Windows.ViewModels;
 
-public sealed record UploadRow(UploadJob Job)
+public sealed record UploadRow(UploadJob Job, double Rate = 0)
 {
     public string Name => Job.Name;
     public double Progress => Job.Size == 0 ? (Job.Status == UploadStatus.Done ? 100 : 0) : 100.0 * Job.Offset / Job.Size;
     public string Bytes => $"{Job.Offset / 1048576.0:F1} / {Job.Size / 1048576.0:F1} MiB";
     public string Message => Job.Message;
+    public string TransferDetails => Job.Status == UploadStatus.Uploading && Job.Offset < Job.Size ? TransferSummary.Details(Rate, Rate > 0 ? (Job.Size - Job.Offset) / Rate : null) : "—";
     public string Status => Job.Status switch
     {
         UploadStatus.Queued => "В очереди",
@@ -36,6 +37,10 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly List<string> _pending = [];
     private ShareFileApi? _api;
     private readonly Stack<Node> _trail = [];
+    private readonly System.Windows.Threading.DispatcherTimer _progressTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    [ObservableProperty] private double _totalProgress;
+    [ObservableProperty] private string _totalLabel = "Общий прогресс";
+    [ObservableProperty] private string _totalDetail = "";
     public Action? ShowRequested { get; set; }
     public ObservableCollection<UploadRow> Jobs { get; } = [];
     public IReadOnlyList<SentLink> HistoryEntries => _queue.History?.ForAccount(_queue.State.Settings.Origin, _queue.State.Settings.Owner) ?? [];
@@ -83,8 +88,10 @@ public sealed partial class MainViewModel : ObservableObject
     {
         _clipboardImages = clipboardImages;
         _queue = queue; _credentials = credentials; _desktop = desktop;
+        _progressTimer.Tick += (_, _) => { if (_queue.State.Jobs.Any(j => j.Status == UploadStatus.Uploading)) Refresh(_queue.State); };
+        _progressTimer.Start();
         if (_queue.History is { } history) history.Changed += () => Application.Current.Dispatcher.BeginInvoke(RefreshHistory);
-        _queue.Changed += state => Application.Current.Dispatcher.BeginInvoke(() => Refresh(state));
+        _queue.Changed += state => Application.Current.Dispatcher.BeginInvoke(() => Refresh(_queue.State));
         _queue.Failed += error => Application.Current.Dispatcher.BeginInvoke(() =>
         {
             Notice = error;
@@ -129,7 +136,14 @@ public sealed partial class MainViewModel : ObservableObject
         _clipboardImages?.Reconcile(_queue.State.Jobs, _pendingImages);
         var selected = SelectedJob?.Job.Id;
         Jobs.Clear();
-        foreach (var job in state.Jobs) Jobs.Add(new UploadRow(job));
+        foreach (var job in state.Jobs)
+        {
+            Jobs.Add(new UploadRow(job, _queue.TransferRate(job.Id)));
+        }
+        var summary = TransferSummary.Create(TransferSummary.Selection(state.Jobs), Jobs.Sum(j => j.Rate));
+        TotalProgress = summary.Percent;
+        TotalLabel = $"Общий прогресс · {summary.Percent:F0}% · Готово {summary.Completed} из {summary.Count}";
+        TotalDetail = summary.Count == 0 ? "Очередь пока пуста" : $"{TransferSummary.Bytes(summary.Offset)} из {TransferSummary.Bytes(summary.Size)} · {summary.Detail}";
         SelectedJob = Jobs.FirstOrDefault(j => j.Job.Id == selected);
         Username = _queue.Connected ? state.Settings.Username : "Не подключено";
         FolderName = state.Settings.FolderName;
@@ -383,6 +397,7 @@ public sealed partial class MainViewModel : ObservableObject
     }
     public async Task ShutdownAsync()
     {
+        _progressTimer.Stop();
         ConnectCommand.Cancel();
         if (ConnectCommand.ExecutionTask is { } pairing) await pairing;
         await _queue.PauseAllAsync();

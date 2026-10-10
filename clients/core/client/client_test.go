@@ -161,6 +161,9 @@ func TestLostCreationAndPatchResponsesResumeWithoutDuplicates(t *testing.T) {
 	if j.Upload != testPath {
 		t.Fatal("followed external Location")
 	}
+	if j.Transferred != j.Size {
+		t.Fatalf("confirmed transferred bytes = %d, want %d", j.Transferred, j.Size)
+	}
 }
 func TestCheckpointRestartAndChangedSource(t *testing.T) {
 	payload := bytes.Repeat([]byte("s"), 20000)
@@ -181,6 +184,9 @@ func TestCheckpointRestartAndChangedSource(t *testing.T) {
 	checkpoint, _ := json.Marshal(j)
 	var restored Job
 	json.Unmarshal(checkpoint, &restored)
+	if restored.Transferred != 0 {
+		t.Fatal("transient rate counter was checkpointed")
+	}
 	if bytes.Contains(checkpoint, []byte("test-device-token")) {
 		t.Fatal("credential in checkpoint")
 	}
@@ -189,6 +195,9 @@ func TestCheckpointRestartAndChangedSource(t *testing.T) {
 	}
 	if f.created != 1 || !bytes.Equal(payload, f.data) {
 		t.Fatal("duplicate creation or corrupted resume")
+	}
+	if restored.Transferred != restored.Size-j.Offset {
+		t.Fatal("resume counted recovered bytes as transferred")
 	}
 	os.WriteFile(j.Source, bytes.Repeat([]byte("x"), len(payload)), 0600)
 	if err = c.Upload(context.Background(), &j, func(Job) {}); err == nil {
@@ -220,6 +229,9 @@ func TestLargeSparseFileAndRevokedDevice(t *testing.T) {
 	}
 	if string(f.data) != "end" || j.Offset != size {
 		t.Fatal("large offset truncated")
+	}
+	if j.Transferred != 3 {
+		t.Fatal("first HEAD counted historical bytes as transfer speed")
 	}
 	f.mu.Lock()
 	f.authorized = false

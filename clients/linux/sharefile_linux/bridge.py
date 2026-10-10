@@ -59,7 +59,7 @@ class BridgeCall:
                         if not isinstance(event, dict):
                             raise ClientError("Некорректный ответ ядра передачи")
                         if event.get("type") == "progress":
-                            progress(event["job"])
+                            progress({**event["job"], "transferred": event.get("transferred", 0)})
                             deadline = time.monotonic() + 16 * 60
                         elif event.get("type") in ("result", "error"):
                             final = event

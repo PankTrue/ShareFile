@@ -10,6 +10,7 @@ from .bridge import BridgeCall, Cancelled, ClientError, safe_message
 from .history import HistoryStore
 from .clipboard import ClipboardImages
 from .state import CHECKPOINT, UNCERTAIN, require_id, validate_job
+from .progress import TransferMeter, selection_jobs, summary
 
 
 class Controller:
@@ -45,10 +46,17 @@ class Controller:
         self._reported = set()
         self._reported_failures = set()
         self._pending_files = []
+        self._meters = {}
 
     def snapshot(self):
         with self._lock:
-            return {**copy.deepcopy(self.state), "connected": bool(self.token),
+            state = copy.deepcopy(self.state)
+            self._meters = {identity: meter for identity, meter in self._meters.items()
+                            if any(job["id"] == identity for job in state["jobs"])}
+            for job in state["jobs"]:
+                meter = self._meters.get(job["id"])
+                job["rate"] = meter.rate() if meter and job["status"] == "uploading" else 0
+            return {**state, "progress": summary(selection_jobs(state["jobs"])), "connected": bool(self.token),
                     "history": self.history.for_account(self.state["settings"]["origin"], self.state["settings"]["owner"]),
                     "notice": self.notice, "pairing_url": self.pairing_url,
                     "active_id": self._active_id, "busy": self._pending > 0,
@@ -290,10 +298,14 @@ class Controller:
             with self._lock:
                 if self._job(identity)["status"] != "queued" or stop.is_set():
                     return
+                self._meters[identity] = TransferMeter()
                 self._update(identity, status="uploading", message="")
             job = self._job(identity)
 
             def checkpoint(progress):
+                with self._lock:
+                    if "transferred" in progress:
+                        self._meters[identity].record(progress["transferred"])
                 fields = {key: progress.get(key, "" if key != "offset" else 0)
                           for key in ("upload", "file_id", "offset")}
                 if "directory" in progress:

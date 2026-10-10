@@ -160,7 +160,7 @@ public sealed partial class UploadEngine
         var root = await EnsureFolderAsync(api, job.FileId, job.Folder, job.Name, job.Id, ct).ConfigureAwait(false);
         job = job with { FileId = root.Id };
         await checkpoint(job, ct).ConfigureAwait(false);
-        var folders = job.Directory!.Folders.ToArray(); var files = job.Directory.Files.ToArray();
+        var folders = job.Directory!.Folders.ToArray(); var files = job.Directory.Files.Select(f => f with { Job = f.Job with { Transferred = 0 } }).ToArray();
         var ids = new Dictionary<string, string>(StringComparer.Ordinal) { [""] = root.Id };
         for (var i = 0; i < folders.Length; i++)
         {
@@ -173,7 +173,7 @@ public sealed partial class UploadEngine
         async Task SaveFileAsync(int index, UploadJob child, bool complete, CancellationToken token)
         {
             files[index] = files[index] with { Job = child, Complete = complete };
-            job = job with { Offset = files.Sum(f => f.Job.Offset), Directory = new DirectoryManifest(folders.ToArray(), files.ToArray()) };
+            job = job with { Offset = files.Sum(f => f.Job.Offset), Transferred = files.Sum(f => f.Job.Transferred), Directory = new DirectoryManifest(folders.ToArray(), files.ToArray()) };
             await checkpoint(job, token).ConfigureAwait(false);
         }
         for (var i = 0; i < files.Length; i++)

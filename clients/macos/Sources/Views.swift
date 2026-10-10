@@ -118,9 +118,19 @@ struct RootView: View {
                     Text("В Finder: правый клик → Службы →\nShareFile: Загрузить и поделиться").font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center).lineSpacing(4)
                 }.frame(maxWidth: .infinity).padding(.vertical, 35)
             } else {
-                VStack(spacing: 1) {
-                    ForEach(model.settings.uploads) { job in uploadRow(job) }
-                }.background(Color.white).clipShape(RoundedRectangle(cornerRadius: 12))
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    VStack(alignment: .leading, spacing: 12) {
+                        let summary = model.transferSummary
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text("Общий прогресс · \(Int(summary.percent))% · Готово \(summary.completed) из \(summary.count)").font(.system(size: 12, weight: .medium))
+                            ProgressView(value: summary.percent, total: 100).tint(green).accessibilityLabel("Общий прогресс подборки")
+                            Text("\(progressBytes(summary.offset)) из \(progressBytes(summary.size)) · \(summary.detail)").font(.system(size: 11)).foregroundStyle(.secondary)
+                        }.padding(16).background(Color.white).clipShape(RoundedRectangle(cornerRadius: 12))
+                        VStack(spacing: 1) {
+                            ForEach(model.settings.uploads) { job in uploadRow(job) }
+                        }.background(Color.white).clipShape(RoundedRectangle(cornerRadius: 12))
+                    }.monospacedDigit()
+                }
             }
             HStack(spacing: 7) {
                 Image(systemName: "lock.shield")
@@ -150,6 +160,10 @@ struct RootView: View {
             }.buttonStyle(.borderless)
             if job.status == "uploading" || job.status == "paused" {
                 ProgressView(value: Double(job.offset), total: Double(max(1, job.size))).tint(green)
+            }
+            if job.status == "uploading" && job.offset < job.size {
+                let rate = model.rate(job.id)
+                Text(transferDetails(rate, seconds: rate > 0 ? Double(job.size - job.offset) / rate : nil)).font(.system(size: 11)).foregroundStyle(.secondary)
             }
             if !job.message.isEmpty { Text(job.message).font(.system(size: 11)).foregroundStyle(Color(red: 0.65, green: 0.27, blue: 0.15)).textSelection(.enabled) }
         }.padding(16)

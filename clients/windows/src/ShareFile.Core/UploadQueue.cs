@@ -19,6 +19,13 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
     private string? _activeId;
     private CancellationTokenSource? _active;
     private bool _loaded;
+    private readonly object _progressLock = new();
+    private readonly Dictionary<string, TransferMeter> _meters = [];
+    public double TransferRate(string id)
+    {
+        lock (_progressLock)
+            return _state.Jobs.Any(j => j.Id == id && j.Status == UploadStatus.Uploading) && _meters.TryGetValue(id, out var meter) ? meter.Rate : 0;
+    }
     public LinkHistory? History => history;
     public ClientState State => _state;
     public bool Connected => _api is not null;
@@ -31,6 +38,8 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
     {
         await store.SaveAsync(next, ct).ConfigureAwait(false);
         _state = next;
+        lock (_progressLock)
+            foreach (var id in _meters.Keys.Where(id => !next.Jobs.Any(j => j.Id == id)).ToArray()) _meters.Remove(id);
     }
     private void Publish() => Changed?.Invoke(_state);
     private async Task UpdateAsync(string id, Func<UploadJob, UploadJob> change, CancellationToken ct)
@@ -185,10 +194,14 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
                 finally { _gate.Release(); }
                 try
                 {
-                    await UpdateAsync(job.Id, j => j with { Status = UploadStatus.Uploading, Message = "" }, active.Token).ConfigureAwait(false);
-                    job = await engine.UploadAsync(api, job, (progress, ct) => UpdateAsync(job.Id,
-                        j => j with { Upload = progress.Upload, FileId = progress.FileId, Offset = progress.Offset,
-                            Directory = progress.Directory ?? j.Directory }, ct), active.Token).ConfigureAwait(false);
+                    lock (_progressLock) _meters[job.Id] = new TransferMeter();
+                    await UpdateAsync(job.Id, j => j with { Status = UploadStatus.Uploading, Message = "", Transferred = 0 }, active.Token).ConfigureAwait(false);
+                    job = await engine.UploadAsync(api, job, (progress, ct) =>
+                    {
+                        lock (_progressLock) _meters[job.Id].Record(progress.Transferred);
+                        return UpdateAsync(job.Id, j => j with { Upload = progress.Upload, FileId = progress.FileId, Offset = progress.Offset, Transferred = progress.Transferred,
+                            Directory = progress.Directory ?? j.Directory }, ct);
+                    }, active.Token).ConfigureAwait(false);
                     await UpdateAsync(job.Id, j => j with { Status = UploadStatus.Uploaded }, active.Token).ConfigureAwait(false);
                     await CreateLinkAsync(api, job, password, active.Token).ConfigureAwait(false);
                 }

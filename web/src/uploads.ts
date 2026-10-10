@@ -3,9 +3,11 @@ import { errorMessage } from './api';
 import { validateDirectory } from './directories';
 import type { DirectorySelection } from './directories';
 import { validName } from './utils';
+import { TransferMeter } from './progress';
 
 export type UploadJob = {
   id: string;
+  batch?: string;
   key: string;
   name: string;
   sourceName?: string;
@@ -131,6 +133,13 @@ export class UploadManager {
   private suspended = false;
   private storageKey: string;
   private storage?: Storage;
+  private meters = new Map<string, TransferMeter>();
+  private transferred = new Map<string, number>();
+  rate(id: string) {
+    return this.jobs.find((job) => job.id === id)?.status === 'uploading'
+      ? (this.meters.get(id)?.rate() ?? 0)
+      : 0;
+  }
   constructor(
     userID: string,
     private onComplete: () => void,
@@ -159,11 +168,16 @@ export class UploadManager {
               (!job.path || /^\/api\/v1\/uploads\/[A-Za-z0-9_-]{43}$/.test(job.path)),
           )
           .slice(-100)
-          .filter((job) => job.status !== 'complete')
           .map((job) => ({
             ...job,
+            batch: typeof job.batch === 'string' ? job.batch : undefined,
+            link: undefined,
             status:
-              job.status === 'sharing' || job.status === 'uncertain' ? 'uncertain' : 'reselect',
+              job.status === 'complete'
+                ? 'complete'
+                : job.status === 'sharing' || job.status === 'uncertain'
+                  ? 'uncertain'
+                  : 'reselect',
             offset: Number.isSafeInteger(job.offset)
               ? Math.max(0, Math.min(job.offset, job.size))
               : 0,
@@ -172,6 +186,10 @@ export class UploadManager {
                 ? 'Папка загружена. Проверьте ссылки этой папки в Web UI перед созданием новой.'
                 : undefined,
           }));
+      const activeBatches = new Set(
+        this.jobs.filter((job) => job.status !== 'complete').map((job) => job.batch ?? job.id),
+      );
+      this.jobs = this.jobs.filter((job) => activeBatches.has(job.batch ?? job.id));
     } catch {
       /* Private mode and storage failures do not prevent uploads. */
     }
@@ -185,12 +203,15 @@ export class UploadManager {
   };
   private emit() {
     this.jobs = [...this.jobs];
+    const activeBatches = new Set(
+      this.jobs.filter((job) => job.status !== 'complete').map((job) => job.batch ?? job.id),
+    );
     try {
       this.storage?.setItem(
         this.storageKey,
         JSON.stringify(
           this.jobs
-            .filter((job) => job.status !== 'complete')
+            .filter((job) => activeBatches.has(job.batch ?? job.id))
             .map((job) => ({ ...job, link: undefined })),
         ),
       );
@@ -211,6 +232,7 @@ export class UploadManager {
     destinationName?: string,
   ) {
     this.suspended = false;
+    const batch = crypto.randomUUID();
     for (const file of files) {
       if (this.jobs.filter((job) => job.status !== 'complete').length >= 100)
         throw new Error('В очереди уже 100 файлов. Завершите или отмените часть загрузок.');
@@ -218,6 +240,7 @@ export class UploadManager {
         throw new Error('Этот размер файла не поддерживается браузером.');
       const job: UploadJob = {
         id: crypto.randomUUID(),
+        batch,
         key: crypto.randomUUID(),
         name: destinationName ?? file.name,
         sourceName: file.name,
@@ -291,6 +314,7 @@ export class UploadManager {
     }
     const job: UploadJob = {
       id: crypto.randomUUID(),
+      batch: crypto.randomUUID(),
       key: crypto.randomUUID(),
       name: selection.name,
       size,
@@ -410,6 +434,8 @@ export class UploadManager {
         if (!(error instanceof Error && 'status' in error && error.status === 404)) throw error;
       });
     this.jobs = this.jobs.filter((job) => job.id !== id);
+    this.meters.delete(id);
+    this.transferred.delete(id);
     this.files.delete(id);
     job.directory?.files.forEach((entry) => this.files.delete(entry.job.id));
     this.emit();
@@ -422,12 +448,16 @@ export class UploadManager {
     this.controller = new AbortController();
     const signal = this.controller.signal;
     this.update(job.id, { status: 'uploading', error: undefined });
+    const meter = new TransferMeter();
+    meter.start();
+    this.meters.set(job.id, meter);
+    this.transferred.set(job.id, 0);
     try {
       if (job.directory) {
         await this.uploadDirectory(job, signal);
         return;
       }
-      await this.uploadFile(job, signal, (patch) => this.update(job.id, patch));
+      await this.uploadFile(job, signal, (patch) => this.update(job.id, patch), job.id);
       this.files.delete(job.id);
       this.onComplete();
     } catch (error) {
@@ -442,6 +472,7 @@ export class UploadManager {
     job: UploadJob,
     signal: AbortSignal,
     update: (patch: Partial<UploadJob>) => void,
+    selectionID: string,
   ) {
     let path = job.path;
     const headers = { 'Tus-Resumable': '1.0.0' };
@@ -486,6 +517,9 @@ export class UploadManager {
         throw new Error(
           'Сервер не подтвердил переданные данные. Возобновите загрузку для проверки позиции.',
         );
+      const transferred = (this.transferred.get(selectionID) ?? 0) + confirmed - offset;
+      this.transferred.set(selectionID, transferred);
+      this.meters.get(selectionID)?.record(transferred);
       offset = confirmed;
       update({
         offset,
@@ -531,12 +565,17 @@ export class UploadManager {
         continue;
       }
       entry.job.folder = ids.get(parentPath(entry.path))!;
-      await this.uploadFile(entry.job, signal, (patch) => {
-        Object.assign(entry.job, patch);
-        this.update(job.id, {
-          offset: directory.files.reduce((sum, entry) => sum + entry.job.offset, 0),
-        });
-      });
+      await this.uploadFile(
+        entry.job,
+        signal,
+        (patch) => {
+          Object.assign(entry.job, patch);
+          this.update(job.id, {
+            offset: directory.files.reduce((sum, entry) => sum + entry.job.offset, 0),
+          });
+        },
+        job.id,
+      );
       this.files.delete(entry.job.id);
     }
     if (signal.aborted) throw new DOMException('Paused', 'AbortError');

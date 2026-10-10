@@ -18,15 +18,21 @@
             <Button Content="Загрузить папку…" Command="{Binding ChooseDirectoryCommand}"/>
             <Button Content="Из буфера (Ctrl+Alt+U)" Command="{Binding UploadClipboardCommand}"/>
             <Button Content="Пауза для всех" Command="{Binding PauseAllCommand}"/></WrapPanel>
-          <TextBlock Grid.Row="1" Margin="0,4,0,16" TextWrapping="Wrap"><Run Text="Папка назначения: "/><Run Text="{Binding FolderName}"/><Run Text=". Перетащите файлы или папку в окно. Для папки создаётся одна ссылка."/></TextBlock>
+          <StackPanel Grid.Row="1" Margin="0,4,0,16">
+            <TextBlock TextWrapping="Wrap"><Run Text="Папка назначения: "/><Run Text="{Binding FolderName}"/><Run Text=". Перетащите файлы или папку в окно. Для папки создаётся одна ссылка."/></TextBlock>
+            <TextBlock Text="{Binding TotalLabel}" Margin="0,12,0,5"/>
+            <ProgressBar Value="{Binding TotalProgress}" Maximum="100" Height="6" AutomationProperties.Name="Общий прогресс подборки"/>
+            <TextBlock Text="{Binding TotalDetail}" TextWrapping="Wrap" FontSize="12" Margin="0,5,0,0"/>
+          </StackPanel>
           <DataGrid Grid.Row="2" ItemsSource="{Binding Jobs}" SelectedItem="{Binding SelectedJob}" AutoGenerateColumns="False"
                     IsReadOnly="True" SelectionMode="Single" CanUserAddRows="False" EnableRowVirtualization="True">
             <DataGrid.Columns>
               <DataGridTextColumn Header="Файл или папка" Binding="{Binding Name}" Width="*"/>
               <DataGridTextColumn Header="Состояние" Binding="{Binding Status}" Width="190"/>
-              <DataGridTemplateColumn Header="Загрузка" Width="170"><DataGridTemplateColumn.CellTemplate><DataTemplate>
+              <DataGridTemplateColumn Header="Загрузка" Width="260"><DataGridTemplateColumn.CellTemplate><DataTemplate>
                 <StackPanel Margin="8"><ProgressBar Value="{Binding Progress}" Height="5" Maximum="100"/>
-                  <TextBlock Text="{Binding Bytes}" FontSize="11" Margin="0,4,0,0"/></StackPanel>
+                  <TextBlock Text="{Binding Bytes}" FontSize="11" Margin="0,4,0,0"/>
+                  <TextBlock Text="{Binding TransferDetails}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/></StackPanel>
               </DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
             </DataGrid.Columns>
           </DataGrid>

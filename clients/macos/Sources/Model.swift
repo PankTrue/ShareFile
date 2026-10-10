@@ -117,6 +117,14 @@ struct UploadCompletion: Equatable {
     private var pairTask: Task<Void, Never>?
     private var activeCall: BridgeCall?
     private var activeID: String?
+    private var meters: [String: TransferMeter] = [:]
+    func rate(_ id: String) -> Double {
+        settings.uploads.first(where: { $0.id == id })?.status == "uploading" ? meters[id]?.rate() ?? 0 : 0
+    }
+    var transferSummary: TransferSummary {
+        let jobs = progressSelection(settings.uploads)
+        return TransferSummary(jobs: jobs, rate: jobs.reduce(0) { $0 + rate($1.id) })
+    }
     private var pumping = false
     private var suspended = false
     private var pendingFiles: [URL] = []
@@ -339,6 +347,8 @@ struct UploadCompletion: Equatable {
             defer { pumping = false; activeID = nil; activeCall = nil }
             while !suspended && connected, let job = settings.uploads.first(where: { $0.status == "queued" }) {
                 activeID = job.id; let call = BridgeCall(); activeCall = call
+                meters = meters.filter { identity, _ in settings.uploads.contains { $0.id == identity } }
+                meters[job.id] = TransferMeter()
                 update(job.id) { $0.status = "uploading" }
                 do {
                     let operation = job.directory == nil ? "upload" : "upload_directory"
@@ -346,6 +356,8 @@ struct UploadCompletion: Equatable {
                     let result = try await request(operation, input, call: call) { raw in
                         Task { @MainActor in
                             let previous = self.settings.uploads.first(where: { $0.id == job.id })
+                            guard previous?.status == "uploading" else { return }
+                            self.meters[job.id]?.record((raw["transferred"] as? NSNumber)?.int64Value ?? 0)
                             let resourceChanged = previous?.upload != raw["upload"] as? String || previous?.file_id != raw["file_id"] as? String
                             // HEAD recovers durable offsets; only resource identity must be checkpointed immediately.
                             self.update(job.id, persist: resourceChanged || raw["directory"] != nil) { item in

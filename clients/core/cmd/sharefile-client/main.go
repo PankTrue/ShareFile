@@ -28,10 +28,11 @@ type request struct {
 	Options   client.ShareOptions `json:"options"`
 }
 type event struct {
-	Type   string `json:"type"`
-	Result any    `json:"result,omitempty"`
-	Job    any    `json:"job,omitempty"`
-	Error  string `json:"error,omitempty"`
+	Type        string `json:"type"`
+	Result      any    `json:"result,omitempty"`
+	Job         any    `json:"job,omitempty"`
+	Error       string `json:"error,omitempty"`
+	Transferred int64  `json:"transferred,omitempty"`
 }
 
 func run(ctx context.Context, in request, emit func(event)) (any, error) {
@@ -61,10 +62,10 @@ func run(ctx context.Context, in request, emit func(event)) (any, error) {
 		token, err := c.PollPairing(ctx, in.RequestID, in.Secret)
 		return map[string]string{"token": token}, err
 	case "upload":
-		err := c.Upload(ctx, &in.Job, func(j client.Job) { emit(event{Type: "progress", Job: &j}) })
+		err := c.Upload(ctx, &in.Job, func(j client.Job) { emit(event{Type: "progress", Job: &j, Transferred: j.Transferred}) })
 		return in.Job, err
 	case "upload_directory":
-		err := c.UploadDirectory(ctx, &in.Directory, func(j client.DirectoryJob) { emit(event{Type: "progress", Job: j}) })
+		err := c.UploadDirectory(ctx, &in.Directory, func(j client.DirectoryJob) { emit(event{Type: "progress", Job: j, Transferred: j.Transferred}) })
 		return in.Directory, err
 	case "cancel_directory":
 		return nil, c.CancelDirectory(ctx, &in.Directory)

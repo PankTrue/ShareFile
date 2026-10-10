@@ -43,6 +43,7 @@ public sealed record UploadJob
     public bool Never { get; init; }
     public string ShareId { get; init; } = "";
     [JsonIgnore] public string Link { get; init; } = "";
+    [JsonIgnore] public long Transferred { get; init; }
 }
 
 public sealed record ClientSettings

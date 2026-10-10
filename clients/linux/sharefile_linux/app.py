@@ -15,6 +15,7 @@ from .secrets import SecretStore
 from .state import StateStore
 from .clipboard import MAX_BYTES, MAX_PIXELS
 from .hotkeys import GlobalShortcut
+from .progress import transfer_details
 
 APP_ID = "io.github.panktrue.ShareFile"
 LABELS = {"queued": "В очереди", "uploading": "Загружается", "paused": "На паузе",
@@ -79,6 +80,7 @@ class Application(Gtk.Application):
             self.build_window()
             self.build_tray()
             self.refresh(self.controller.snapshot())
+            GLib.timeout_add_seconds(1, self.tick_progress)
             self.shortcut = GlobalShortcut(self.get_application_id(), self.upload_clipboard, self.shortcut_label.set_text)
             self.shortcut.start()
             self.controller.restore()
@@ -175,6 +177,13 @@ class Application(Gtk.Application):
         self.window.hide()
         return True
 
+    def tick_progress(self):
+        if self._quitting:
+            return GLib.SOURCE_REMOVE
+        if any(job["status"] == "uploading" for job in self._snapshot.get("jobs", [])):
+            self.refresh(self.controller.snapshot())
+        return GLib.SOURCE_CONTINUE
+
     def build_queue(self):
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=12)
         tools = Gtk.Box(spacing=8)
@@ -186,7 +195,12 @@ class Application(Gtk.Application):
         page.pack_start(tools, False, False, 0)
         self.shortcut_label = Gtk.Label(label="Изображение из буфера: Ctrl+Alt+U", xalign=0, wrap=True)
         page.pack_start(self.shortcut_label, False, False, 0)
-        self.rows = Gtk.ListStore(str, str, str, int, str, str)
+        self.total_progress = Gtk.ProgressBar(show_text=True)
+        self.total_progress.set_tooltip_text("Общий прогресс подборки")
+        page.pack_start(self.total_progress, False, False, 0)
+        self.total_detail = Gtk.Label(xalign=0, wrap=True)
+        page.pack_start(self.total_detail, False, False, 0)
+        self.rows = Gtk.ListStore(str, str, str, int, str, str, str)
         self.tree = Gtk.TreeView(model=self.rows)
         for title, column in (("Файл или папка", 1), ("Размер", 2), ("Состояние", 4)):
             renderer = Gtk.CellRendererText()
@@ -196,6 +210,7 @@ class Application(Gtk.Application):
             item.set_expand(column == 1)
             self.tree.append_column(item)
         self.tree.insert_column(Gtk.TreeViewColumn("Прогресс", Gtk.CellRendererProgress(), value=3), 2)
+        self.tree.append_column(Gtk.TreeViewColumn("Скорость / осталось", Gtk.CellRendererText(), text=6))
         self.tree.set_tooltip_column(5)
         self.tree.get_selection().connect("changed", lambda *_: self.refresh_actions())
         scroll = Gtk.ScrolledWindow()
@@ -372,12 +387,19 @@ class Application(Gtk.Application):
         if self._quitting:
             return
         self._snapshot = snapshot
+        total = snapshot.get("progress")
+        if total:
+            self.total_progress.set_fraction(total["percent"] / 100)
+            self.total_progress.set_text(f"Общий прогресс · {total['percent']}% · Готово {total['completed']} из {total['count']}")
+            self.total_detail.set_text(f"{self.size_label(total['offset'])} из {self.size_label(total['size'])} · {total['detail']}")
         selected = self.selected()
         self.rows.clear()
         for job in snapshot["jobs"]:
             percent = int(job["offset"] * 100 // job["size"]) if job["size"] else (100 if job["status"] == "done" else 0)
+            rate = job.get("rate", 0)
+            detail = transfer_details(rate, (job["size"] - job["offset"]) / rate if rate > 0 else None) if job["status"] == "uploading" and job["offset"] < job["size"] else "—"
             iterator = self.rows.append([job["id"], job["name"], self.size_label(job["size"]), percent,
-                                        LABELS.get(job["status"], job["status"]), job["message"]])
+                                        LABELS.get(job["status"], job["status"]), job["message"], detail])
             if job["id"] == selected:
                 self.tree.get_selection().select_iter(iterator)
         settings = snapshot["settings"]

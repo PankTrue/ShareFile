@@ -24,6 +24,7 @@ public sealed class TransferTests : IDisposable
         var checkpoints = new List<UploadJob>();
         var result = await Engine().UploadAsync(api, job, (j, _) => { checkpoints.Add(j); return Task.CompletedTask; }, TestContext.Current.CancellationToken);
         Assert.Equal(job.Size, result.Offset);
+        Assert.Equal(job.Size, result.Transferred);
         Assert.Equal(1, api.CreatedObjects);
         Assert.All(api.IdempotencyKeys, key => Assert.Equal(job.Id, key));
         Assert.Equal(await File.ReadAllBytesAsync(job.Source, TestContext.Current.CancellationToken), api.Bytes.ToArray());
@@ -42,6 +43,7 @@ public sealed class TransferTests : IDisposable
         Assert.True(saved.Offset > 0);
         var resumed = await Engine().UploadAsync(api, saved, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
         Assert.Equal(job.Size, resumed.Offset);
+        Assert.Equal(job.Size - saved.Offset, resumed.Transferred);
         Assert.Equal(1, api.CreatedObjects);
     }
 
@@ -61,6 +63,7 @@ public sealed class TransferTests : IDisposable
         var job = await JobAsync([]); var api = new FakeApi();
         var result = await Engine().UploadAsync(api, job, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
         Assert.Equal(0, result.Offset); Assert.Empty(api.PatchOffsets);
+        Assert.Equal(0, result.Transferred);
     }
 
     [Fact]

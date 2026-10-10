@@ -1481,6 +1481,17 @@ input[type='file']::file-selector-button {
   font-size: 10px;
   color: var(--muted);
   padding: 0 17px 14px;
+  display: grid;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.upload-panel-summary strong {
+  color: var(--ink);
+}
+.upload-panel-summary progress {
+  width: 100%;
+  height: 5px;
+  accent-color: var(--blue);
 }
 .upload-list {
   max-height: min(400px, 60dvh);
