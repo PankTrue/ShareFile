@@ -73,13 +73,64 @@ class GtkTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        cls.app.shortcut.stop()
-        cls.app.controller.close().result(timeout=5)
-        cls.app.tray.set_visible(False)
-        cls.app.window.destroy()
-        cls.app.release()
-        cls.spin()
+        with patch("sys.excepthook") as errors:
+            cls.app.stop()
+            cls.app.controller.close().result(timeout=5)
+            cls.spin()
+            cls.app.tray.set_visible(False)
+            cls.app.window.destroy()
+            cls.app.release()
+            cls.spin()
         cls.directory.cleanup()
+        if errors.called:
+            raise AssertionError("GTK callback failed during shutdown: " + repr(errors.call_args_list))
+
+    def hide_notebook_pages(self):
+        # Restore the startup visibility state even if another test showed the window.
+        self.app.window.hide()
+        for index in range(self.app.notebook.get_n_pages()):
+            self.app.notebook.get_nth_page(index).hide()
+
+    def test_history_opens_from_background_on_first_show(self):
+        self.hide_notebook_pages()
+        self.assertFalse(self.app.window.get_visible())
+        self.assertFalse(self.app.notebook.get_nth_page(2).get_visible())
+        self.app.show_history()
+        self.assertTrue(self.app.window.get_visible())
+        self.assertEqual(self.app.notebook.get_current_page(), 2)
+        self.spin()
+        self.assertEqual(self.app.notebook.get_current_page(), 2)
+        self.app.hide_window()
+        self.app.notebook.set_current_page(0)
+        self.app.show_history()
+        self.assertEqual(self.app.notebook.get_current_page(), 2)
+        self.app.window.hide()
+
+    def test_pending_files_open_settings_on_first_show(self):
+        self.hide_notebook_pages()
+        self.assertFalse(self.app.window.get_visible())
+        snapshot = self.app.controller.snapshot()
+        try:
+            self.app.refresh({**snapshot, "connected": False, "pending_files": 1})
+            self.assertTrue(self.app.window.get_visible())
+            self.assertEqual(self.app.notebook.get_current_page(), 1)
+        finally:
+            self.app.refresh(snapshot)
+            self.app.window.hide()
+
+    def test_clipboard_without_connection_opens_settings_on_first_show(self):
+        self.hide_notebook_pages()
+        self.assertFalse(self.app.window.get_visible())
+        snapshot = self.app.controller.snapshot()
+        try:
+            with patch.object(self.app.controller, "snapshot", return_value={**snapshot, "connected": False}):
+                self.app.upload_clipboard()
+                self.assertTrue(self.app.window.get_visible())
+                self.assertEqual(self.app.notebook.get_current_page(), 1)
+        finally:
+            self.wait_idle()
+            self.app.refresh(self.app.controller.snapshot())
+            self.app.window.hide()
 
     def test_native_window_initially_hidden_manual_open_and_hide(self):
         self.app.window.hide()

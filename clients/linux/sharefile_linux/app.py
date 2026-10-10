@@ -114,18 +114,19 @@ class Application(Gtk.Application):
             if not background or not paths or not snapshot["settings"]["silent_uploads"] or not snapshot["settings"]["origin"]:
                 # An autostart invocation has no files and must stay silent.
                 if not (background and not paths):
-                    self.show()
-            if paths and not snapshot["settings"]["origin"]:
-                self.notebook.set_current_page(1)
+                    self.show(1 if paths and not snapshot["settings"]["origin"] else None)
             return 0
         except Exception as error:
             self.message(safe_message(error))
             self.show()
             return 1
 
-    def show(self):
+    def show(self, page=None):
         if self.window:
             self.window.show_all()
+            # Notebook pages must be visible before selecting the initial tab.
+            if page is not None:
+                self.notebook.set_current_page(page)
             self.window.present()
 
     def open_url(self, url):
@@ -288,8 +289,7 @@ class Application(Gtk.Application):
                           self.tray_menu.popup(None, None, Gtk.StatusIcon.position_menu, icon, button, timestamp))
 
     def show_history(self):
-        self.notebook.set_current_page(2)
-        self.show()
+        self.show(2)
 
     @staticmethod
     def history_status(entry):
@@ -424,8 +424,7 @@ class Application(Gtk.Application):
         self.refresh_history()
         self.refresh_recent()
         if not snapshot["connected"] and snapshot["pending_files"]:
-            self.notebook.set_current_page(1)
-            self.show()
+            self.show(1)
 
     @staticmethod
     def size_label(size):
@@ -487,8 +486,7 @@ class Application(Gtk.Application):
             return
         if not self.controller.snapshot()["connected"]:
             self.controller.set_notice("Сначала подключите хранилище")
-            self.notebook.set_current_page(1)
-            self.show()
+            self.show(1)
             return
         self._capturing_clipboard = True
         display = Gdk.Display.get_default()
