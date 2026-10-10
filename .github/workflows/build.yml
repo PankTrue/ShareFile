@@ -125,18 +125,17 @@ jobs:
         run: make macos-build
       - name: Check native client and real backend transfers
         run: make macos-check desktop-smoke
-      - name: Generate package checksum
+      - name: Check DMG package checksum
         working-directory: clients/macos/build
         run: |
-          shasum -a 256 ShareFile-macOS-universal.zip > ShareFile-macOS-universal.zip.sha256
-          shasum -a 256 -c ShareFile-macOS-universal.zip.sha256
+          shasum -a 256 -c ShareFile-macOS-universal.dmg.sha256
       - uses: actions/upload-artifact@v7
         with:
           name: ShareFile-macOS
           if-no-files-found: error
           path: |
-            clients/macos/build/ShareFile-macOS-universal.zip
-            clients/macos/build/ShareFile-macOS-universal.zip.sha256
+            clients/macos/build/ShareFile-macOS-universal.dmg
+            clients/macos/build/ShareFile-macOS-universal.dmg.sha256
 
   windows:
     name: Windows (x64 and ARM64)

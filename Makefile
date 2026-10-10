@@ -45,6 +45,8 @@ macos-build:
 macos-check:
 	codesign --verify --deep --strict clients/macos/build/ShareFile.app
 	clients/macos/build/ShareFile.app/Contents/MacOS/ShareFile --self-test
+	hdiutil verify clients/macos/build/ShareFile-macOS-universal.dmg
+	cd clients/macos/build && shasum -a 256 -c ShareFile-macOS-universal.dmg.sha256
 
 desktop-smoke: build
 	python3 scripts/desktop-smoke.py

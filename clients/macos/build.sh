@@ -41,5 +41,11 @@ mkdir -p "$STAGE_DIR/package"
 ditto --norsrc --noextattr "$APP_DIR" "$STAGE_DIR/package/ShareFile.app"
 cp "$BUILD_DIR/Install.command" "$BUILD_DIR/Uninstall.command" "$STAGE_DIR/package/"
 cp "$ROOT_DIR/docs/macos.md" "$STAGE_DIR/package/README.md"
-ditto -c -k --norsrc --noextattr --keepParent "$STAGE_DIR/package" "$BUILD_DIR/ShareFile-macOS-universal.zip"
-printf 'Built: %s\n' "$BUILD_DIR/ShareFile.app" "$BUILD_DIR/ShareFile-macOS-universal.zip"
+ln -s /Applications "$STAGE_DIR/package/Applications"
+PACKAGE_NAME="ShareFile-macOS-universal.dmg"
+hdiutil create -volname ShareFile -srcfolder "$STAGE_DIR/package" -fs HFS+ \
+    -format UDZO "$STAGE_DIR/$PACKAGE_NAME"
+hdiutil verify "$STAGE_DIR/$PACKAGE_NAME"
+mv "$STAGE_DIR/$PACKAGE_NAME" "$BUILD_DIR/$PACKAGE_NAME"
+(cd "$BUILD_DIR" && shasum -a 256 "$PACKAGE_NAME" > "$PACKAGE_NAME.sha256")
+printf 'Built: %s\n' "$BUILD_DIR/ShareFile.app" "$BUILD_DIR/$PACKAGE_NAME" "$BUILD_DIR/$PACKAGE_NAME.sha256"

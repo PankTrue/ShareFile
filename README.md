@@ -283,7 +283,7 @@ The single [Build and release workflow](.github/workflows/build.yml) runs on pus
 
 A pushed `v*` tag publishes a GitHub Release automatically. Publishing a release through **Releases → Draft a new release → Publish release** also attaches the packages automatically. In both cases, the preparation job looks for a successful run of this workflow for the exact release commit, with all four unexpired package artifacts. When found, the build jobs are skipped and those existing packages are downloaded, their SHA-256 files checked, and the files attached to the release. Otherwise, all five build/check jobs run and must succeed before their new packages are attached. Pull-request runs are excluded from package reuse.
 
-The release includes these router assets plus the macOS ZIP, both Windows ZIPs, both Linux tarballs and their SHA-256 files:
+The release includes these router assets plus the macOS DMG, both Windows ZIPs, both Linux tarballs and their SHA-256 files:
 
 - `sharefile-router.tar.gz`: server, Web UI, configuration templates, and Entware scripts.
 - `sharefile-router.tar.gz.sha256`: archive checksum.
@@ -379,7 +379,7 @@ make macos-check
 make desktop-smoke
 ```
 
-The package is `clients/macos/build/ShareFile-macOS-universal.zip`. See [docs/macos.md](docs/macos.md).
+The installer is `clients/macos/build/ShareFile-macOS-universal.dmg`, with a `.dmg.sha256` checksum. Open the DMG, drag `ShareFile.app` onto **Applications**, eject the image, and launch the installed app. The included `Install.command` supports installation in `~/Applications` without `sudo`. See [docs/macos.md](docs/macos.md).
 
 ## Linux client
 
