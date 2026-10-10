@@ -36,7 +36,7 @@ export function FolderPicker({
 }: {
   value: string;
   onChange: (id: string) => void;
-  exclude?: string;
+  exclude?: string | string[];
 }) {
   const [offset, setOffset] = useState(0);
   const nodes = useResource<FileNode[]>(
@@ -44,7 +44,11 @@ export function FolderPicker({
   );
   const folder = useResource<FileNode>(value ? `/api/v1/nodes/${idPath(value)}` : null);
   const folders =
-    nodes.value?.filter((node) => node.kind === 'folder' && node.id !== exclude) ?? [];
+    nodes.value?.filter(
+      (node) =>
+        node.kind === 'folder' &&
+        !(Array.isArray(exclude) ? exclude.includes(node.id) : node.id === exclude),
+    ) ?? [];
   function go(id: string) {
     setOffset(0);
     onChange(id);

@@ -3762,6 +3762,191 @@
           }
         ]
       }
+    },
+    "/api/v1/nodes/batch": {
+      "post": {
+        "summary": "Atomically move, trash or collect a selection",
+        "operationId": "post_api_v1_nodes_batch",
+        "tags": [
+          "API"
+        ],
+        "description": "Process 1-100 distinct live nodes in one metadata transaction. Every selected node requires editor access, including descendants covered by another selected node. Selected ancestors cover their descendants once. Move preserves names and requires editor access to the destination; name collisions, roots and cycles return 409. Delete sends nodes and subtrees to the existing 7-day trash and protects user home roots. Collect creates a new folder under parent_id, moves nodes into it, preserves nested and empty folders, and adds numeric suffixes to duplicate names (including the new folder name). Collect requires manager access to the destination so the folder can be shared; it does not create a link automatically. Any error rolls back all node changes, folder creation and affected share revocations. No automatic retry on lost responses; refresh the listing to inspect the result. Browser requests require CSRF.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "action",
+                  "node_ids"
+                ],
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "move",
+                      "delete",
+                      "collect"
+                    ]
+                  },
+                  "node_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    }
+                  },
+                  "parent_id": {
+                    "type": "string",
+                    "description": "Required for move and collect; a live destination folder."
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 240,
+                    "description": "Required for collect; valid folder name, at most 240 UTF-8 bytes."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Collect succeeded; the newly created folder and effective role.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Node"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Move or trash completed."
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/nodes/archive": {
+      "get": {
+        "summary": "Download selected files and folders as one ZIP",
+        "operationId": "get_api_v1_nodes_archive",
+        "tags": [
+          "API"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "description": "Repeated query parameter for 1-100 distinct nodes. Selected ancestors cover descendants once.",
+            "schema": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 100,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Streaming ZIP attachment; no Content-Length, ETag or Range/resume.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Attachment named Выбранные файлы.zip"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string",
+                  "const": "none"
+                }
+              }
+            },
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "description": "Requires reader access to every selected node. A single download slot is held until completion; 429 if busy. Supports files and folders, including nested/empty directories. Selected nodes become top-level ZIP entries; duplicate basenames receive numeric suffixes without changing stored names. Streams with fast compression and a 32 KiB buffer, without creating temporary files. Central-directory metadata remains in memory. Access, live subtree membership and selected root positions are rechecked during streaming. Permission loss, movement, cancellation or I/O errors abort the response without finalizing an incomplete ZIP. This is a live traversal, not a snapshot. HEAD only validates selection and download slot and returns headers; it never reads file objects or builds a ZIP."
+      },
+      "head": {
+        "summary": "Selection ZIP headers",
+        "operationId": "head_api_v1_nodes_archive",
+        "tags": [
+          "API"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "description": "Repeated query parameter for 1-100 distinct nodes. Selected ancestors cover descendants once.",
+            "schema": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 100,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Streaming ZIP attachment; no Content-Length, ETag or Range/resume.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Attachment named Выбранные файлы.zip"
+              },
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string",
+                  "const": "none"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "description": "Requires reader access to every selected node. A single download slot is held until completion; 429 if busy. Supports files and folders, including nested/empty directories. Selected nodes become top-level ZIP entries; duplicate basenames receive numeric suffixes without changing stored names. Streams with fast compression and a 32 KiB buffer, without creating temporary files. Central-directory metadata remains in memory. Access, live subtree membership and selected root positions are rechecked during streaming. Permission loss, movement, cancellation or I/O errors abort the response without finalizing an incomplete ZIP. This is a live traversal, not a snapshot. HEAD only validates selection and download slot and returns headers; it never reads file objects or builds a ZIP."
+      }
     }
   },
   "components": {

@@ -83,9 +83,9 @@ function observe(page) {
     if (/Refused|violat.*Content Security/i.test(message.text())) errors.push(message.text());
   });
 }
-async function downloadArchive(page, filename, expected) {
+async function downloadArchive(page, filename, expected, action = 'Скачать всё (ZIP)') {
   const pending = page.waitForEvent('download');
-  await page.getByRole('link', { name: 'Скачать всё (ZIP)', exact: true }).click();
+  await page.getByRole('link', { name: action, exact: true }).click();
   const download = await pending;
   assert.equal(download.suggestedFilename(), filename);
   assert.equal(await download.failure(), null);
@@ -659,12 +659,18 @@ try {
   await fileSearch.getByRole('button', { name: 'Найти', exact: true }).click();
   await visible(user.getByRole('button', { name: 'Глобальный результат 000', exact: true }));
   assert.equal(await user.locator('.file-table tbody tr').count(), 100);
+  await user.getByLabel('Выбрать всё на странице', { exact: true }).check();
+  await visible(user.getByText('Выбрано: 100', { exact: true }));
   await user
     .locator('.file-card .pager')
     .getByRole('button', { name: 'Далее', exact: true })
     .click();
   await visible(user.getByRole('button', { name: 'Глобальный результат 104', exact: true }));
   assert.equal(await user.locator('.file-table tbody tr').count(), 5);
+  assert.equal(
+    await user.getByRole('region', { name: 'Действия с выбранными файлами' }).count(),
+    0,
+  );
   assert.equal(
     await fileSearch.getByLabel('Поиск по всем доступным папкам').inputValue(),
     'ГЛОБАЛЬНЫЙ РЕЗУЛЬТАТ',
@@ -827,6 +833,119 @@ try {
   await user
     .getByRole('button', { name: 'Убрать Через выбор папки из списка', exact: true })
     .click();
+  // Bulk selection, one streaming ZIP, transactional move/trash, collect/share.
+  await user.goto(publicURL + `/#/files/${projects}`);
+  await visible(user.getByRole('button', { name: 'Новая папка', exact: true }));
+  await user.getByRole('button', { name: 'Новая папка', exact: true }).click();
+  await user.getByRole('dialog').getByLabel('Название', { exact: true }).fill('Массовые действия');
+  await user.getByRole('dialog').getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await user.getByRole('button', { name: 'Массовые действия', exact: true }).click();
+  await visible(user.getByRole('heading', { name: 'Массовые действия', exact: true }));
+  const bulkFolder = new URL(user.url()).hash.split('/').at(-1);
+  await user.getByLabel('Выбрать файлы для загрузки', { exact: true }).setInputFiles([
+    { name: 'a.txt', mimeType: 'text/plain', buffer: Buffer.from('first') },
+    { name: 'b.txt', mimeType: 'text/plain', buffer: Buffer.from('second') },
+    { name: 'c.txt', mimeType: 'text/plain', buffer: Buffer.from('third') },
+  ]);
+  for (const name of ['a.txt', 'b.txt', 'c.txt'])
+    await visible(user.getByRole('button', { name, exact: true }));
+  await user.locator('.upload-panel-heading').click();
+  await user.getByLabel('Выбрать a.txt', { exact: true }).check();
+  const selectAll = user.getByLabel('Выбрать всё на странице', { exact: true });
+  assert.equal(await selectAll.evaluate((input) => input.indeterminate), true);
+  await user.getByLabel('Выбрать b.txt', { exact: true }).check();
+  await downloadArchive(
+    user,
+    'Выбранные файлы.zip',
+    { 'a.txt': 'first', 'b.txt': 'second' },
+    'Скачать выбранное (ZIP)',
+  );
+  await user.screenshot({ path: join(screenshots, 'bulk-desktop.png'), fullPage: true });
+  await user.setViewportSize({ width: 390, height: 844 });
+  assert.equal(
+    await user.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    true,
+  );
+  await user.screenshot({ path: join(screenshots, 'bulk-mobile.png'), fullPage: true });
+  await user.setViewportSize({ width: 1440, height: 960 });
+  await user.getByRole('button', { name: 'В корзину выбранное', exact: true }).click();
+  await user.getByRole('dialog').getByRole('button', { name: 'Отмена', exact: true }).click();
+  assert.equal(await user.getByLabel('Выбрать a.txt', { exact: true }).isChecked(), true);
+  await user.getByRole('button', { name: 'Переместить выбранное', exact: true }).click();
+  const bulkDialog = user.getByRole('dialog');
+  await bulkDialog.getByRole('button', { name: 'В начало', exact: true }).click();
+  await bulkDialog
+    .locator('.picker-list')
+    .getByRole('button', { name: 'alice', exact: false })
+    .click();
+  await bulkDialog.getByRole('button', { name: 'Переместить', exact: true }).click();
+  await bulkDialog.waitFor({ state: 'hidden' });
+  await visible(user.getByRole('button', { name: 'c.txt', exact: true }));
+  assert.equal(await user.getByRole('button', { name: 'a.txt', exact: true }).count(), 0);
+  assert.equal(
+    await user.getByRole('region', { name: 'Действия с выбранными файлами' }).count(),
+    0,
+  );
+  await user.goto(publicURL + `/#/files/${session.user.home_id}`);
+  await visible(user.getByLabel('Выбрать a.txt', { exact: true }));
+  await user.getByLabel('Выбрать a.txt', { exact: true }).check();
+  await user.getByLabel('Выбрать b.txt', { exact: true }).check();
+  await user.getByRole('button', { name: 'Собрать для отправки', exact: true }).click();
+  await bulkDialog.getByLabel('Название папки', { exact: true }).fill('Отправить вместе');
+  await bulkDialog.getByRole('button', { name: 'Собрать и поделиться', exact: true }).click();
+  await visible(bulkDialog.getByRole('heading', { name: 'Публичный доступ', exact: true }));
+  await bulkDialog.getByRole('button', { name: 'Создать ссылку', exact: true }).click();
+  const bulkURL = await user.getByLabel('Созданная публичная ссылка', { exact: true }).inputValue();
+  const bulkGuest = await anonymous.newPage();
+  observe(bulkGuest);
+  await bulkGuest.goto(bulkURL);
+  await downloadArchive(bulkGuest, 'Отправить вместе.zip', {
+    'Отправить вместе/': '',
+    'Отправить вместе/a.txt': 'first',
+    'Отправить вместе/b.txt': 'second',
+  });
+  await bulkDialog.getByRole('button', { name: 'Закрыть', exact: true }).click();
+  await user.getByRole('button', { name: 'Отправить вместе', exact: true }).click();
+  await user.getByLabel('Выбрать всё на странице', { exact: true }).check();
+  assert.equal(await user.getByLabel('Выбрать a.txt', { exact: true }).isChecked(), true);
+  assert.equal(await user.getByLabel('Выбрать b.txt', { exact: true }).isChecked(), true);
+  // Navigating to another folder clears selection, including when going back.
+  await user.goto(publicURL + `/#/files/${bulkFolder}`);
+  await visible(user.getByRole('button', { name: 'c.txt', exact: true }));
+  assert.equal(
+    await user.getByRole('region', { name: 'Действия с выбранными файлами' }).count(),
+    0,
+  );
+  await user.getByRole('button', { name: 'Новая папка', exact: true }).click();
+  await bulkDialog.getByLabel('Название', { exact: true }).fill('Пустая');
+  await bulkDialog.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await visible(user.getByLabel('Выбрать Пустая', { exact: true }));
+  await user.getByLabel('Выбрать всё на странице', { exact: true }).check();
+  await user.getByRole('button', { name: 'В корзину выбранное', exact: true }).click();
+  await bulkDialog.getByRole('button', { name: 'В корзину', exact: true }).click();
+  await visible(user.getByRole('heading', { name: 'Здесь пока пусто', exact: true }));
+  assert.equal(
+    await user.getByRole('region', { name: 'Действия с выбранными файлами' }).count(),
+    0,
+  );
+  // Selections work across folders in search and clear when search is reset.
+  await user.getByLabel('Поиск по всем доступным папкам').fill('.txt');
+  await user.getByRole('button', { name: 'Найти', exact: true }).click();
+  await visible(user.getByLabel('Выбрать a.txt', { exact: true }));
+  await user.getByLabel('Выбрать a.txt', { exact: true }).check();
+  await user.getByLabel('Выбрать b.txt', { exact: true }).check();
+  await downloadArchive(
+    user,
+    'Выбранные файлы.zip',
+    { 'a.txt': 'first', 'b.txt': 'second' },
+    'Скачать выбранное (ZIP)',
+  );
+  await user.getByRole('button', { name: 'Сбросить поиск', exact: true }).click();
+  await visible(user.getByRole('heading', { name: 'Здесь пока пусто', exact: true }));
+  assert.equal(
+    await user.getByRole('region', { name: 'Действия с выбранными файлами' }).count(),
+    0,
+  );
   // Responsive layout and horizontal overflow, including real loaded rows.
   await user.goto(publicURL + `/#/files/${projects}`);
   await visible(user.getByRole('button', { name: 'Документ.txt', exact: true }));
@@ -869,7 +988,7 @@ try {
   assert.equal((await publicAdmin.request.get(publicURL + '/api/v1/admin/users')).status(), 404);
   assert.deepEqual(errors, [], 'Browser errors/CSP violations');
   console.log(
-    'Browser acceptance passed: auth, private admin, users/groups/ACL, reader/manager UI, chunked upload and SHA-256, sharing, rename/move/replace/revoke/trash/restore, lost-response resume, device pairing/revocation, settings/import, password-protected live folder, public previews, authenticated gallery without shares, escaped and truncated text, native PDF rendering, audio/video playback and seeking, player cleanup, unsupported/failed media fallback, global Unicode search with combined filters, safe folder paths, search pagination beyond 100 results, streaming ZIP downloads with nested and empty folders, real directory drag/drop with empty folders and duplicate basenames, one folder link, directory picker, mobile layout, logout.',
+    'Browser acceptance passed: auth, private admin, users/groups/ACL, reader/manager UI, chunked upload and SHA-256, sharing, rename/move/replace/revoke/trash/restore, lost-response resume, device pairing/revocation, settings/import, password-protected live folder, public previews, authenticated gallery without shares, escaped and truncated text, native PDF rendering, audio/video playback and seeking, player cleanup, unsupported/failed media fallback, global Unicode search with combined filters, safe folder paths, search pagination beyond 100 results, streaming ZIP downloads with nested and empty folders, real directory drag/drop with empty folders and duplicate basenames, one folder link, directory picker, bulk selection/move/trash/collect/share and selection ZIPs, selection reset on navigation/search, mobile layout, logout.',
   );
 } catch (error) {
   if (browser)

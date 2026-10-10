@@ -10,6 +10,9 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"path"
+	"strconv"
+	"strings"
 	"time"
 
 	"sharefile/backend/internal/identity"
@@ -58,13 +61,86 @@ func (a *App) serveArchive(w http.ResponseWriter, r *http.Request, root metadata
 		fail(w, r, metadata.ErrInvalid)
 		return
 	}
+	a.serveZIP(w, r, root.Name+".zip", func(z *zip.Writer, flush func() error) error {
+		return a.writeArchive(r.Context(), z, root, resolve, flush)
+	})
+}
+
+func (a *App) downloadSelection(w http.ResponseWriter, r *http.Request, u identity.Actor) {
+	nodes, err := a.Files.Selection(r.Context(), u.ID, r.URL.Query()["id"])
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	// Search results can contain identical basenames from different folders.
+	names := make([]string, len(nodes))
+	used := map[string]bool{}
+	for i, n := range nodes {
+		name := n.Name
+		for suffix := 1; used[name]; suffix++ {
+			ext := path.Ext(n.Name)
+			name = strings.TrimSuffix(n.Name, ext) + " (" + strconv.Itoa(suffix) + ")" + ext
+		}
+		if !metadata.ValidName(name) {
+			fail(w, r, metadata.ErrConflict)
+			return
+		}
+		names[i], used[name] = name, true
+	}
+	a.serveZIP(w, r, "Выбранные файлы.zip", func(z *zip.Writer, flush func() error) error {
+		buffer := make([]byte, 32*1024)
+		for i, root := range nodes {
+			resolve := func(id string) (metadata.Node, error) {
+				live, err := a.Files.Node(r.Context(), u.ID, root.ID)
+				if err != nil {
+					return metadata.Node{}, err
+				}
+				if live.ParentID != root.ParentID || live.Name != root.Name {
+					return metadata.Node{}, metadata.ErrConflict
+				}
+				return metadata.GetSubtreeNode(r.Context(), a.Store.DB, root.ID, id)
+			}
+			if _, err := resolve(root.ID); err != nil {
+				return err
+			}
+			if root.Kind == "folder" {
+				if err := a.writeArchiveAt(r.Context(), z, root, names[i], resolve, flush); err != nil {
+					return err
+				}
+			} else {
+				if err := a.archiveFile(r.Context(), z, root, names[i], buffer); err != nil {
+					return err
+				}
+				if _, err := resolve(root.ID); err != nil {
+					return err
+				}
+				if err := flush(); err != nil {
+					return err
+				}
+			}
+		}
+		// Recheck even the first entry after the final file has streamed.
+		for _, root := range nodes {
+			live, err := a.Files.Node(r.Context(), u.ID, root.ID)
+			if err != nil {
+				return err
+			}
+			if live.ParentID != root.ParentID || live.Name != root.Name {
+				return metadata.ErrConflict
+			}
+		}
+		return nil
+	})
+}
+
+func (a *App) serveZIP(w http.ResponseWriter, r *http.Request, filename string, write func(*zip.Writer, func() error) error) {
 	release := gate(w, r, a.downloadSlots)
 	if release == nil {
 		return
 	}
 	defer release()
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": root.Name + ".zip"}))
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
 	w.Header().Set("Accept-Ranges", "none")
 	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 	// Length is unknown until completion. HEAD must not read files or build a ZIP.
@@ -85,7 +161,7 @@ func (a *App) serveArchive(w http.ResponseWriter, r *http.Request, root metadata
 		compressor.Reset(w)
 		return compressor, nil
 	})
-	err = a.writeArchive(r.Context(), z, root, resolve, func() error {
+	err = write(z, func() error {
 		if err := z.Flush(); err != nil {
 			return err
 		}
@@ -153,10 +229,14 @@ func archiveEntry(z *zip.Writer, n metadata.Node, name string) (io.Writer, error
 }
 
 func (a *App) writeArchive(ctx context.Context, z *zip.Writer, root metadata.Node, resolve archiveResolver, flush func() error) error {
+	return a.writeArchiveAt(ctx, z, root, root.Name, resolve, flush)
+}
+
+func (a *App) writeArchiveAt(ctx context.Context, z *zip.Writer, root metadata.Node, name string, resolve archiveResolver, flush func() error) error {
 	if _, err := resolve(root.ID); err != nil {
 		return err
 	}
-	if _, err := archiveEntry(z, root, root.Name); err != nil {
+	if _, err := archiveEntry(z, root, name); err != nil {
 		return err
 	}
 	// Send the first ZIP bytes before traversing or reading the tree.
@@ -167,7 +247,7 @@ func (a *App) writeArchive(ctx context.Context, z *zip.Writer, root metadata.Nod
 		node                   metadata.Node
 		path, lastName, lastID string
 	}
-	stack := []frame{{node: root, path: root.Name}}
+	stack := []frame{{node: root, path: name}}
 	buffer := make([]byte, 32*1024)
 	for len(stack) > 0 {
 		if err := ctx.Err(); err != nil {

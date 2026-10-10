@@ -176,39 +176,46 @@ func (s *Service) Move(ctx context.Context, user, id, parent, name string) error
 		if err := s.Disk.Check(); err != nil {
 			return err
 		}
-		n, err := metadata.GetNode(ctx, tx, id)
-		if err != nil {
-			return err
-		}
-		if err = access.Require(ctx, tx, user, id, access.Editor); err != nil {
-			return err
-		}
-		if n.ParentID == "" {
-			return metadata.ErrConflict
-		}
-		if err = folderAccess(ctx, tx, user, parent, access.Editor); err != nil {
-			return err
-		}
-		var cycle int
-		err = tx.QueryRowContext(ctx, `WITH RECURSIVE subtree(id) AS (SELECT id FROM nodes WHERE id=? UNION ALL SELECT n.id FROM nodes n JOIN subtree s ON n.parent_id=s.id) SELECT count(*) FROM subtree WHERE id=?`, id, parent).Scan(&cycle)
-		if err != nil {
-			return err
-		}
-		if cycle > 0 {
-			return metadata.ErrConflict
-		}
-		var used int
-		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM nodes WHERE parent_id=? AND name=? AND deleted_at IS NULL AND id<>?", parent, name, id).Scan(&used); err != nil {
-			return err
-		}
-		if used > 0 {
-			return metadata.ErrConflict
-		}
-		if _, err = tx.ExecContext(ctx, "UPDATE nodes SET parent_id=?,name=? WHERE id=?", parent, name, id); err != nil {
+		if err := moveQ(ctx, tx, user, id, parent, name); err != nil {
 			return err
 		}
 		return access.RevokeInvalid(ctx, tx)
 	})
+}
+
+func moveQ(ctx context.Context, tx *sql.Tx, user, id, parent, name string) error {
+	n, err := metadata.GetNode(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	if err = access.Require(ctx, tx, user, id, access.Editor); err != nil {
+		return err
+	}
+	if n.ParentID == "" {
+		return metadata.ErrConflict
+	}
+	if err = folderAccess(ctx, tx, user, parent, access.Editor); err != nil {
+		return err
+	}
+	var cycle int
+	err = tx.QueryRowContext(ctx, `WITH RECURSIVE subtree(id) AS (SELECT id FROM nodes WHERE id=? UNION ALL SELECT n.id FROM nodes n JOIN subtree s ON n.parent_id=s.id) SELECT count(*) FROM subtree WHERE id=?`, id, parent).Scan(&cycle)
+	if err != nil {
+		return err
+	}
+	if cycle > 0 {
+		return metadata.ErrConflict
+	}
+	var used int
+	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM nodes WHERE parent_id=? AND name=? AND deleted_at IS NULL AND id<>?", parent, name, id).Scan(&used); err != nil {
+		return err
+	}
+	if used > 0 {
+		return metadata.ErrConflict
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE nodes SET parent_id=?,name=? WHERE id=?", parent, name, id); err != nil {
+		return err
+	}
+	return nil
 }
 func trashQ(ctx context.Context, tx *sql.Tx, id string) error {
 	_, err := tx.ExecContext(ctx, `WITH RECURSIVE subtree(id) AS (SELECT id FROM nodes WHERE id=? AND deleted_at IS NULL UNION ALL SELECT n.id FROM nodes n JOIN subtree s ON n.parent_id=s.id WHERE n.deleted_at IS NULL)
@@ -220,21 +227,28 @@ func (s *Service) Delete(ctx context.Context, user, id string) error {
 		if err := s.Disk.Check(); err != nil {
 			return err
 		}
-		if err := access.Require(ctx, tx, user, id, access.Editor); err != nil {
-			return err
-		}
-		var homes int
-		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM users WHERE home_id=?", id).Scan(&homes); err != nil {
-			return err
-		}
-		if homes > 0 {
-			return metadata.ErrConflict
-		}
-		if err := trashQ(ctx, tx, id); err != nil {
+		if err := deleteQ(ctx, tx, user, id); err != nil {
 			return err
 		}
 		return access.RevokeInvalid(ctx, tx)
 	})
+}
+
+func deleteQ(ctx context.Context, tx *sql.Tx, user, id string) error {
+	if err := access.Require(ctx, tx, user, id, access.Editor); err != nil {
+		return err
+	}
+	var homes int
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM users WHERE home_id=?", id).Scan(&homes); err != nil {
+		return err
+	}
+	if homes > 0 {
+		return metadata.ErrConflict
+	}
+	if err := trashQ(ctx, tx, id); err != nil {
+		return err
+	}
+	return nil
 }
 func canTrash(ctx context.Context, q metadata.Queries, user string, n metadata.Node) bool {
 	if admin(ctx, q, user) {

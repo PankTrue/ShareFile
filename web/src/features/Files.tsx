@@ -13,6 +13,7 @@ import { AccessDialog, ShareDialog } from './Sharing';
 import { directoryFromFiles, readDrop } from '../directories';
 import type { DirectorySelection } from '../directories';
 import { FilePreview } from '../components/FilePreview';
+import { BulkActions } from './BulkActions';
 
 type Dialog =
   | { kind: 'new' }
@@ -40,6 +41,12 @@ export function Files({
   const [preview, setPreview] = useState<{ files: FileNode[]; index: number }>();
   const [uploadError, setUploadError] = useState('');
   const [dragging, setDragging] = useState(false);
+  const selectionScope = `${folderID}:${search ?? 'browse'}:${offset}`;
+  const [selection, setSelection] = useState<{ scope: string; ids: string[] }>({
+    scope: selectionScope,
+    ids: [],
+  });
+  if (selection.scope !== selectionScope) setSelection({ scope: selectionScope, ids: [] });
   const input = useRef<HTMLInputElement>(null);
   const directoryInput = useRef<HTMLInputElement>(null);
   const rows = useResource<FileNode[]>(
@@ -112,6 +119,14 @@ export function Files({
   const filtered = searching
     ? (results.value?.items ?? [])
     : (rows.value ?? []).filter((node) => !spaces || node.id !== session.user.home_id);
+  const selected =
+    selection.scope === selectionScope
+      ? filtered.filter((node) => selection.ids.includes(node.id))
+      : [];
+  const allSelected = filtered.length > 0 && selected.length === filtered.length;
+  function select(ids: string[]) {
+    setSelection({ scope: selectionScope, ids });
+  }
   function refresh() {
     resource.refresh();
     current.refresh();
@@ -383,6 +398,18 @@ export function Files({
             </p>
           )}
         </form>
+        {!resource.loading && !resource.error && selected.length > 0 && (
+          <BulkActions
+            nodes={selected}
+            parent={folderID}
+            onClear={() => select([])}
+            onSaved={() => {
+              select([]);
+              refresh();
+            }}
+            onCollected={(folder) => setDialog({ kind: 'share', node: folder })}
+          />
+        )}
         <State
           loading={resource.loading}
           error={resource.error}
@@ -409,7 +436,22 @@ export function Files({
             <table className="file-table">
               <thead>
                 <tr>
-                  <th>Название</th>
+                  <th>
+                    <label className="select-all">
+                      <input
+                        type="checkbox"
+                        aria-label="Выбрать всё на странице"
+                        checked={allSelected}
+                        ref={(node) => {
+                          if (node) node.indeterminate = selected.length > 0 && !allSelected;
+                        }}
+                        onChange={(event) =>
+                          select(event.target.checked ? filtered.map((node) => node.id) : [])
+                        }
+                      />
+                      Название
+                    </label>
+                  </th>
                   <th>Размер</th>
                   <th>Добавлено</th>
                   <th>
@@ -419,9 +461,30 @@ export function Files({
               </thead>
               <tbody>
                 {filtered.map((node) => (
-                  <tr key={node.id}>
+                  <tr
+                    key={node.id}
+                    className={
+                      selection.ids.includes(node.id) && selection.scope === selectionScope
+                        ? 'selected'
+                        : undefined
+                    }
+                  >
                     <td>
                       <div className="file-name">
+                        <input
+                          type="checkbox"
+                          aria-label={`Выбрать ${node.name}`}
+                          checked={selected.some((item) => item.id === node.id)}
+                          onChange={(event) =>
+                            select(
+                              event.target.checked
+                                ? [...selected.map((item) => item.id), node.id]
+                                : selected
+                                    .filter((item) => item.id !== node.id)
+                                    .map((item) => item.id),
+                            )
+                          }
+                        />
                         <span
                           className={`file-symbol ${node.kind === 'folder' ? 'folder' : /\.(png|jpe?g|webp|svg|gif)$/i.test(node.name) ? 'picture' : 'document'}`}
                         >
