@@ -6,6 +6,8 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -20,9 +22,51 @@ env:
   DOTNET_VERSION: '10.0.x'
 
 jobs:
-  # Build jobs have no dependencies on each other and start in parallel.
+  prepare:
+    name: Find existing release packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      source_run_id: ${{ steps.packages.outputs.source_run_id }}
+      artifact_ids: ${{ steps.packages.outputs.artifact_ids }}
+    steps:
+      - name: Reuse a successful build of the release commit
+        id: packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_REQUEST: ${{ github.event_name == 'release' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) }}
+        run: |
+          if [ "$RELEASE_REQUEST" != true ]; then
+            exit 0
+          fi
+          run_ids=$(gh run list --workflow build.yml --commit "$RELEASE_SHA" --status success --limit 100 \
+            --json databaseId,event --jq '.[] | select(.event == "push" or .event == "workflow_dispatch" or .event == "release") | .databaseId')
+          for run_id in $run_ids; do
+            artifact_ids=$(gh api --paginate "repos/$GH_REPO/actions/runs/$run_id/artifacts?per_page=100" \
+              --jq '.artifacts[] | select(.expired == false) | {id, name}' | jq -sr '
+                ["sharefile-router", "ShareFile-macOS", "ShareFile-Windows", "ShareFile-Linux"] as $required |
+                [.[] | select(.name as $name | $required | index($name))] |
+                if (map(.name) | sort) == ($required | sort)
+                then map(.id | tostring) | join(",")
+                else empty end')
+            if [ -n "$artifact_ids" ]; then
+              printf 'source_run_id=%s\nartifact_ids=%s\n' "$run_id" "$artifact_ids" >> "$GITHUB_OUTPUT"
+              echo "Reusing packages from successful run $run_id for commit $RELEASE_SHA"
+              exit 0
+            fi
+          done
+          echo "No complete, unexpired packages for commit $RELEASE_SHA; building all platforms"
+
+  # When no existing packages were found, all build jobs start in parallel.
   router:
     name: Router ARM64 and Web UI
+    needs: prepare
+    if: needs.prepare.outputs.source_run_id == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -61,6 +105,8 @@ jobs:
 
   macos:
     name: macOS universal (ARM64 and x86_64)
+    needs: prepare
+    if: needs.prepare.outputs.source_run_id == ''
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -94,6 +140,8 @@ jobs:
 
   windows:
     name: Windows (x64 and ARM64)
+    needs: prepare
+    if: needs.prepare.outputs.source_run_id == ''
     runs-on: windows-latest
     timeout-minutes: 25
     defaults:
@@ -138,6 +186,8 @@ jobs:
 
   windows-protocol:
     name: Windows protocol with Linux backend
+    needs: prepare
+    if: needs.prepare.outputs.source_run_id == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -163,6 +213,8 @@ jobs:
 
   linux:
     name: Linux (x86_64 and ARM64)
+    needs: prepare
+    if: needs.prepare.outputs.source_run_id == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -206,15 +258,33 @@ jobs:
 
   release:
     name: Publish all platform packages
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [router, macos, windows, windows-protocol, linux]
+    if: >-
+      !cancelled() && needs.prepare.result == 'success' &&
+      (github.event_name == 'release' ||
+       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))) &&
+      (needs.prepare.outputs.source_run_id != '' ||
+       (needs.router.result == 'success' && needs.macos.result == 'success' &&
+        needs.windows.result == 'success' && needs.windows-protocol.result == 'success' &&
+        needs.linux.result == 'success'))
+    needs: [prepare, router, macos, windows, windows-protocol, linux]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/download-artifact@v8
+        if: needs.prepare.outputs.source_run_id == ''
         with:
+          path: release
+          merge-multiple: true
+      - name: Download existing release packages
+        if: needs.prepare.outputs.source_run_id != ''
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.prepare.outputs.source_run_id }}
+          artifact-ids: ${{ needs.prepare.outputs.artifact_ids }}
           path: release
           merge-multiple: true
       - name: Check downloaded package checksums
@@ -224,7 +294,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" release/* --clobber

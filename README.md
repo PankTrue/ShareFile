@@ -279,9 +279,11 @@ Logs: `/opt/var/log/sharefile/server.jsonl`, with one rotated file, each limited
 
 ## Publish a GitHub release
 
-The single [Build and release workflow](.github/workflows/build.yml) runs on pushes to `master`/`main`, pull requests, and manual dispatch. Four independent jobs build and check the router with Web UI, macOS universal, Windows x64/ARM64, and Linux x86_64/ARM64 in parallel. An additional parallel Linux job checks the Windows protocol against a real Go backend. Each platform job runs its own build, validation and packaging steps and uploads a separate Actions artifact: `sharefile-router`, `ShareFile-macOS`, `ShareFile-Windows`, or `ShareFile-Linux`.
+The single [Build and release workflow](.github/workflows/build.yml) runs on pushes to `master`/`main`, pull requests, manual dispatch, and publication of a GitHub Release. After a preparation job, four independent jobs build and check the router with Web UI, macOS universal, Windows x64/ARM64, and Linux x86_64/ARM64 in parallel. An additional parallel Linux job checks the Windows protocol against a real Go backend. Each platform job runs its own build, validation and packaging steps and uploads a separate Actions artifact: `sharefile-router`, `ShareFile-macOS`, `ShareFile-Windows`, or `ShareFile-Linux`.
 
-A pushed `v*` tag publishes a GitHub Release after all five jobs succeed. It includes these router assets plus the macOS ZIP, both Windows ZIPs, both Linux tarballs and their SHA-256 files:
+A pushed `v*` tag publishes a GitHub Release automatically. Publishing a release through **Releases → Draft a new release → Publish release** also attaches the packages automatically. In both cases, the preparation job looks for a successful run of this workflow for the exact release commit, with all four unexpired package artifacts. When found, the build jobs are skipped and those existing packages are downloaded, their SHA-256 files checked, and the files attached to the release. Otherwise, all five build/check jobs run and must succeed before their new packages are attached. Pull-request runs are excluded from package reuse.
+
+The release includes these router assets plus the macOS ZIP, both Windows ZIPs, both Linux tarballs and their SHA-256 files:
 
 - `sharefile-router.tar.gz`: server, Web UI, configuration templates, and Entware scripts.
 - `sharefile-router.tar.gz.sha256`: archive checksum.
@@ -296,7 +298,7 @@ git push origin v0.1.0
 
 Wait for **Actions → Build and release** to finish, then check the repository's **Releases** page. Tags containing a hyphen, such as `v0.2.0-rc.1`, are published as prereleases and are available through `--version`; the default installer selects the latest stable release.
 
-Publishing uses the repository's `GITHUB_TOKEN` with `contents: write` only in the release job. No personal access token is needed for the workflow. GitHub release downloads in the installation command assume the repository/releases are public. See the [GitHub CLI release documentation](https://cli.github.com/manual/gh_release_create).
+Publishing uses the repository's `GITHUB_TOKEN` with `contents: write` only in the release job and `actions: read` for package lookup/download. No personal access token is needed for the workflow. Commit and push the updated workflow before tagging that commit or publishing its release. GitHub release downloads in the installation command assume the repository/releases are public. See the [GitHub CLI release documentation](https://cli.github.com/manual/gh_release_create).
 
 ## Build locally
 
