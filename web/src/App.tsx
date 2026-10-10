@@ -253,6 +253,8 @@ function Login({
 const navigation: { page: string; title: string; icon: IconName; admin?: boolean }[] = [
   { page: 'files', title: 'Мои файлы', icon: 'folder' },
   { page: 'spaces', title: 'Доступные папки', icon: 'users' },
+  { page: 'favorites', title: 'Избранное', icon: 'star' },
+  { page: 'recent', title: 'Недавние', icon: 'clock' },
   { page: 'shares', title: 'Публичные ссылки', icon: 'link' },
   { page: 'trash', title: 'Корзина', icon: 'trash' },
   { page: 'devices', title: 'Устройства', icon: 'device' },
@@ -470,6 +472,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               <Files
                 folderID=""
                 spaces
+                onFolder={(id) => (id ? navigate('files', id) : navigate('spaces'))}
+                uploadRevision={uploadRevision}
+                onQueue={() => setQueue(true)}
+              />
+            )}
+            {(page === 'favorites' || page === 'recent') && (
+              <Files
+                key={page}
+                folderID=""
+                collection={page}
                 onFolder={(id) => (id ? navigate('files', id) : navigate('spaces'))}
                 uploadRevision={uploadRevision}
                 onQueue={() => setQueue(true)}

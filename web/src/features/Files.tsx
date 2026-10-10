@@ -21,12 +21,14 @@ type Dialog =
 export function Files({
   folderID,
   spaces = false,
+  collection,
   onFolder,
   uploadRevision,
   onQueue,
 }: {
   folderID: string;
   spaces?: boolean;
+  collection?: 'favorites' | 'recent';
   onFolder: (id: string) => void;
   uploadRevision: number;
   onQueue: () => void;
@@ -41,7 +43,9 @@ export function Files({
   const [preview, setPreview] = useState<{ files: FileNode[]; index: number }>();
   const [uploadError, setUploadError] = useState('');
   const [dragging, setDragging] = useState(false);
-  const selectionScope = `${folderID}:${search ?? 'browse'}:${offset}`;
+  const favoriteTask = useTask();
+  const collectionTitle = collection === 'favorites' ? 'Избранное' : 'Недавние';
+  const selectionScope = `${collection ?? folderID}:${search ?? 'browse'}:${offset}`;
   const [selection, setSelection] = useState<{ scope: string; ids: string[] }>({
     scope: selectionScope,
     ids: [],
@@ -50,17 +54,18 @@ export function Files({
   const input = useRef<HTMLInputElement>(null);
   const directoryInput = useRef<HTMLInputElement>(null);
   const rows = useResource<FileNode[]>(
-    search === undefined
+    search === undefined && !collection
       ? `/api/v1/folders?parent_id=${idPath(folderID)}&limit=100&offset=${offset}&refresh=${uploadRevision}`
       : null,
   );
   const results = useResource<SearchResult>(
-    search !== undefined
-      ? `/api/v1/search?${search}&limit=100&offset=${offset}&refresh=${uploadRevision}`
+    search !== undefined || collection
+      ? `/api/v1/search?${search ?? ''}&view=${collection ?? ''}&limit=100&offset=${offset}&refresh=${uploadRevision}`
       : null,
   );
   const searching = search !== undefined;
-  const resource = searching ? results : rows;
+  const listing = searching || Boolean(collection);
+  const resource = listing ? results : rows;
   const current = useResource<FileNode>(folderID ? `/api/v1/nodes/${idPath(folderID)}` : null);
   const [trail, setTrail] = useState<FileNode[]>([]);
   const editor = folderID && (current.value?.effective_role ?? 0) >= 2;
@@ -116,7 +121,7 @@ export function Files({
     onQueue();
     await uploads.addDirectory(selection, folderID, current.value.name);
   }
-  const filtered = searching
+  const filtered = listing
     ? (results.value?.items ?? [])
     : (rows.value ?? []).filter((node) => !spaces || node.id !== session.user.home_id);
   const selected =
@@ -131,15 +136,56 @@ export function Files({
     resource.refresh();
     current.refresh();
   }
+  function toggleFavorite(node: FileNode) {
+    void favoriteTask.run(async () => {
+      const favorite = !node.favorite;
+      await api(`/api/v1/nodes/${idPath(node.id)}/favorite`, favorite ? 'PUT' : 'DELETE');
+      const update = (item: FileNode) => (item.id === node.id ? { ...item, favorite } : item);
+      rows.mutate((items) => items?.map(update));
+      results.mutate((result) =>
+        result
+          ? { ...result, items: result.items.map((item) => ({ ...item, ...update(item) })) }
+          : result,
+      );
+      current.mutate((item) => (item ? update(item) : item));
+      if (collection === 'favorites' && !favorite) {
+        select([]);
+        if (filtered.length === 1 && offset > 0) setOffset(Math.max(0, offset - 100));
+        else results.refresh();
+      }
+    });
+  }
+  function favoriteButton(node: FileNode, currentFolder = false) {
+    return (
+      <IconButton
+        icon="star"
+        className={node.favorite ? 'favorite-active' : ''}
+        label={`${node.favorite ? 'Убрать из избранного' : 'Добавить в избранное'} ${currentFolder ? 'текущую папку' : node.name}`}
+        aria-pressed={Boolean(node.favorite)}
+        disabled={favoriteTask.busy}
+        onClick={() => toggleFavorite(node)}
+      />
+    );
+  }
   return (
     <>
       <PageTitle
-        eyebrow={spaces ? 'СОВМЕСТНАЯ РАБОТА' : 'ВАШЕ ХРАНИЛИЩЕ'}
-        title={spaces ? 'Доступные папки' : (current.value?.name ?? 'Мои файлы')}
+        eyebrow={collection ? 'БЫСТРЫЙ ДОСТУП' : spaces ? 'СОВМЕСТНАЯ РАБОТА' : 'ВАШЕ ХРАНИЛИЩЕ'}
+        title={
+          collection
+            ? collectionTitle
+            : spaces
+              ? 'Доступные папки'
+              : (current.value?.name ?? 'Мои файлы')
+        }
         description={
-          spaces
-            ? 'Личные и общие папки, к которым у вас есть доступ.'
-            : 'Сохраняйте файлы на своём диске и делитесь ими по ссылке.'
+          collection === 'favorites'
+            ? 'Ваши избранные файлы и рабочие папки.'
+            : collection === 'recent'
+              ? 'Последние завершённые загрузки из доступных папок. Новые файлы — сверху.'
+              : spaces
+                ? 'Личные и общие папки, к которым у вас есть доступ.'
+                : 'Сохраняйте файлы на своём диске и делитесь ими по ссылке.'
         }
       >
         {folderID && current.value && (
@@ -168,7 +214,7 @@ export function Files({
             Поделиться папкой
           </Button>
         )}
-        {!folderID && session.user.admin && (
+        {!folderID && !collection && session.user.admin && (
           <Button variant="primary" icon="plus" onClick={() => setDialog({ kind: 'new' })}>
             Создать общую папку
           </Button>
@@ -203,7 +249,7 @@ export function Files({
           })().catch((error) => setUploadError(errorMessage(error)));
         }}
       />
-      <ErrorBox message={uploadError || current.error} />
+      <ErrorBox message={uploadError || current.error || favoriteTask.error} />
       <section
         className={`file-card ${dragging ? 'dragging' : ''}`}
         onDragOver={(e) => {
@@ -233,6 +279,12 @@ export function Files({
               <Icon name="folder" />
               Папки
             </button>
+            {collection && (
+              <span>
+                <Icon name="chevron" />
+                {collectionTitle}
+              </span>
+            )}
             {trail.map((node) => (
               <span key={node.id}>
                 <Icon name="chevron" />
@@ -246,6 +298,7 @@ export function Files({
             ))}
           </nav>
           <div className="toolbar-actions">
+            {current.value && favoriteButton(current.value, true)}
             {manager && current.value && (
               <IconButton
                 icon="shield"
@@ -293,8 +346,14 @@ export function Files({
               <input
                 value={filters.query}
                 onChange={(e) => setFilters({ ...filters, query: e.target.value })}
-                placeholder="Найти во всех папках"
-                aria-label="Поиск по всем доступным папкам"
+                placeholder={
+                  collection ? `Найти в разделе «${collectionTitle}»` : 'Найти во всех папках'
+                }
+                aria-label={
+                  collection
+                    ? `Поиск в разделе ${collectionTitle}`
+                    : 'Поиск по всем доступным папкам'
+                }
               />
             </label>
             <Button type="submit" icon="search">
@@ -323,9 +382,11 @@ export function Files({
                   value={filters.type}
                   onChange={(e) => setFilters({ ...filters, type: e.target.value })}
                 >
-                  <option value="">Все файлы и папки</option>
+                  <option value="">
+                    {collection === 'recent' ? 'Все файлы' : 'Все файлы и папки'}
+                  </option>
                   <option value="file">Все файлы</option>
-                  <option value="folder">Папки</option>
+                  {collection !== 'recent' && <option value="folder">Папки</option>}
                   <option value="image">Изображения</option>
                   <option value="document">Документы и текст</option>
                   <option value="audio">Аудио</option>
@@ -394,7 +455,9 @@ export function Files({
           <ErrorBox message={searchError} />
           {searching && (
             <p className="search-scope" role="status">
-              Результаты по всем доступным папкам
+              {collection
+                ? `Результаты в разделе «${collectionTitle}»`
+                : 'Результаты по всем доступным папкам'}
             </p>
           )}
         </form>
@@ -415,13 +478,25 @@ export function Files({
           error={resource.error}
           retry={resource.refresh}
           empty={!filtered.length}
-          title={searching ? 'Ничего не найдено' : 'Здесь пока пусто'}
+          title={
+            searching
+              ? 'Ничего не найдено'
+              : collection === 'favorites'
+                ? 'В избранном пока пусто'
+                : collection === 'recent'
+                  ? 'Пока нет загрузок'
+                  : 'Здесь пока пусто'
+          }
           description={
             searching
               ? 'Измените запрос или фильтры и повторите поиск.'
-              : editor
-                ? 'Загрузите первые файлы или создайте папку.'
-                : 'Здесь появятся доступные вам файлы и папки.'
+              : collection === 'favorites'
+                ? 'Нажмите звёздочку рядом с файлом или рабочей папкой, чтобы сохранить быстрый доступ.'
+                : collection === 'recent'
+                  ? 'Загрузите файл в личную или общую папку — он появится здесь после завершения.'
+                  : editor
+                    ? 'Загрузите первые файлы или создайте папку.'
+                    : 'Здесь появятся доступные вам файлы и папки.'
           }
           action={
             editor && !searching ? (
@@ -519,7 +594,7 @@ export function Files({
                         )}
                         {node.kind === 'folder' && <span className="folder-type">Папка</span>}
                       </div>
-                      {searching &&
+                      {listing &&
                         (() => {
                           const path = (node as SearchNode).path;
                           const parent = path.at(-1);
@@ -546,6 +621,7 @@ export function Files({
                     <td>{date(node.created_at)}</td>
                     <td>
                       <div className="row-actions">
+                        {favoriteButton(node)}
                         {node.kind === 'file' && (
                           <a
                             className="icon-button"
@@ -614,8 +690,8 @@ export function Files({
         )}
         <Pager
           offset={offset}
-          count={searching ? (results.value?.items.length ?? 0) : (rows.value?.length ?? 0)}
-          hasMore={searching ? (results.value?.has_more ?? false) : rows.value?.length === 100}
+          count={listing ? (results.value?.items.length ?? 0) : (rows.value?.length ?? 0)}
+          hasMore={listing ? (results.value?.has_more ?? false) : rows.value?.length === 100}
           onChange={setOffset}
         />
         {editor && (

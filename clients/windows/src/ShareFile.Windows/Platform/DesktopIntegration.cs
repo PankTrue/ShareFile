@@ -22,11 +22,13 @@ public sealed class DesktopIntegration : IDisposable
     public Action<SentLink>? RevokeHistoryRequested { get; set; }
     public Func<SentLink, bool>? CanRevokeHistory { get; set; }
     public Action? ExitRequested { get; set; }
+    public Action? ClipboardRequested { get; set; }
 
     public DesktopIntegration()
     {
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Открыть ShareFile", null, (_, _) => OpenRequested?.Invoke());
+        menu.Items.Add("Из буфера обмена (Ctrl+Alt+U)", null, (_, _) => ClipboardRequested?.Invoke());
         menu.Items.Add("История ссылок", null, (_, _) => HistoryRequested?.Invoke());
         var recent = new Forms.ToolStripMenuItem("Недавние ссылки");
         menu.Items.Add(recent);

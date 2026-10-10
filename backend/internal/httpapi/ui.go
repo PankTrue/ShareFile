@@ -13,12 +13,17 @@ import (
 // Views describe available actions; each mutation still independently enforces access.
 type nodeView struct {
 	metadata.Node
-	EffectiveRole int `json:"effective_role"`
+	EffectiveRole int  `json:"effective_role"`
+	Favorite      bool `json:"favorite"`
 }
 
 func (a *App) viewNode(r *http.Request, user string, n metadata.Node) (nodeView, error) {
 	role, err := access.Role(r.Context(), a.Store.DB, user, n.ID)
-	return nodeView{n, role}, err
+	if err != nil {
+		return nodeView{}, err
+	}
+	favorite, err := a.Files.IsFavorite(r.Context(), user, n.ID)
+	return nodeView{Node: n, EffectiveRole: role, Favorite: favorite}, err
 }
 func (a *App) replyNode(w http.ResponseWriter, r *http.Request, user string, n metadata.Node, status int) {
 	v, err := a.viewNode(r, user, n)

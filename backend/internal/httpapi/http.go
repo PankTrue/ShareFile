@@ -144,6 +144,12 @@ func (a *App) handler(private bool) http.Handler {
 		a.replyNode(w, r, u.ID, n, 200)
 	}))
 	mux.HandleFunc("PATCH /api/v1/nodes/{id}", a.auth(false, a.moveNode))
+	mux.HandleFunc("PUT /api/v1/nodes/{id}/favorite", a.auth(false, func(w http.ResponseWriter, r *http.Request, u identity.Actor) {
+		noContent(w, r, a.Files.SetFavorite(r.Context(), u.ID, r.PathValue("id"), true))
+	}))
+	mux.HandleFunc("DELETE /api/v1/nodes/{id}/favorite", a.auth(false, func(w http.ResponseWriter, r *http.Request, u identity.Actor) {
+		noContent(w, r, a.Files.SetFavorite(r.Context(), u.ID, r.PathValue("id"), false))
+	}))
 	mux.HandleFunc("DELETE /api/v1/nodes/{id}", a.auth(false, func(w http.ResponseWriter, r *http.Request, u identity.Actor) {
 		noContent(w, r, a.Files.Delete(r.Context(), u.ID, r.PathValue("id")))
 	}))

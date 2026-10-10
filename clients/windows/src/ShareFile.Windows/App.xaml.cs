@@ -12,6 +12,7 @@ public partial class App : Application
     private ServiceProvider? _services;
     private MainViewModel? _model;
     private bool _exiting;
+    private ClipboardHotKey? _clipboardHotKey;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -31,6 +32,7 @@ public partial class App : Application
                 .AddSingleton<IStateStore>(new JsonStateStore(Path.Combine(directory, "state.json")))
                 .AddSingleton<LinkHistory>(services => new LinkHistory(Path.Combine(directory, "history.json"), services.GetRequiredService<ICredentialStore>()))
                 .AddSingleton<UploadEngine>().AddSingleton<UploadQueue>()
+                .AddSingleton(new ClipboardImages(Path.Combine(directory, "clipboard")))
                 .AddSingleton<ICredentialStore, CredentialStore>()
                 .AddSingleton<DesktopIntegration>().AddSingleton<MainViewModel>()
                 .BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
@@ -49,8 +51,11 @@ public partial class App : Application
             desktop.RevokeHistoryRequested = entry => _ = _model.RevokeHistoryEntryAsync(entry);
             desktop.CanRevokeHistory = entry => _model.IsConnected && !entry.Revoked;
             desktop.ExitRequested = () => _ = ExitAsync();
+            desktop.ClipboardRequested = () => _model.UploadClipboardCommand.Execute(null);
             await _model.InitializeAsync();
             _model.LoadSettings();
+            try { _clipboardHotKey = new ClipboardHotKey(() => _model.UploadClipboardCommand.Execute(null)); }
+            catch (ClientException error) { _model.Notice = error.Message; }
             _instance.Listen(async forwarded => await Dispatcher.InvokeAsync(async () =>
             {
                 if (forwarded.Show) ShowWindow();
@@ -70,6 +75,7 @@ public partial class App : Application
     {
         if (_exiting) return;
         _exiting = true;
+        _clipboardHotKey?.Dispose(); _clipboardHotKey = null;
         try
         {
             if (_model is not null) await _model.ShutdownAsync();

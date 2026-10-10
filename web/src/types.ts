@@ -17,6 +17,7 @@ export type FileNode = {
   created_at: number;
   deleted_at?: number;
   effective_role?: number;
+  favorite?: boolean;
 };
 export type Share = {
   id: string;

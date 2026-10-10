@@ -76,8 +76,12 @@ public sealed partial class MainViewModel : ObservableObject
     private static string TokenAccount(string origin) => "device:" + origin;
     private static string PasswordAccount(string origin) => "password:" + origin;
 
-    public MainViewModel(UploadQueue queue, ICredentialStore credentials, DesktopIntegration desktop)
+    private readonly ClipboardImages? _clipboardImages;
+    private readonly HashSet<string> _pendingImages = [];
+
+    public MainViewModel(UploadQueue queue, ICredentialStore credentials, DesktopIntegration desktop, ClipboardImages? clipboardImages = null)
     {
+        _clipboardImages = clipboardImages;
         _queue = queue; _credentials = credentials; _desktop = desktop;
         if (_queue.History is { } history) history.Changed += () => Application.Current.Dispatcher.BeginInvoke(RefreshHistory);
         _queue.Changed += state => Application.Current.Dispatcher.BeginInvoke(() => Refresh(state));
@@ -122,6 +126,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void Refresh(ClientState state)
     {
+        _clipboardImages?.Reconcile(_queue.State.Jobs, _pendingImages);
         var selected = SelectedJob?.Job.Id;
         Jobs.Clear();
         foreach (var job in state.Jobs) Jobs.Add(new UploadRow(job));
@@ -257,6 +262,30 @@ public sealed partial class MainViewModel : ObservableObject
     {
         var dialog = new OpenFolderDialog { Multiselect = true, Title = "Загрузить папку целиком" };
         if (dialog.ShowDialog() == true) await AcceptFilesAsync(dialog.FolderNames, false);
+    }
+
+    [RelayCommand]
+    private async Task UploadClipboardAsync()
+    {
+        string? path = null;
+        try
+        {
+            if (!IsConnected) { SelectedTab = 1; ShowRequested?.Invoke(); throw new ClientException("Сначала подключите хранилище"); }
+            if (_clipboardImages is null) throw new ClientException("Не удалось открыть каталог изображений");
+            path = await _clipboardImages.WriteAsync(await ClipboardUpload.ReadPngAsync());
+            _pendingImages.Add(path);
+            await _queue.AddAsync([path]);
+        }
+        catch (Exception error)
+        {
+            Notice = UploadQueue.SafeMessage(error);
+            _desktop.NotifyFailure(Notice, _queue.State.Settings.NotifyUploads);
+        }
+        finally
+        {
+            if (path is not null) { _pendingImages.Remove(path); _clipboardImages?.Release(path); }
+            _clipboardImages?.Reconcile(_queue.State.Jobs, _pendingImages);
+        }
     }
 
     public async Task AcceptFilesAsync(IEnumerable<string> paths, bool explorer)

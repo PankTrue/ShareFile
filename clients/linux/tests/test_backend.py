@@ -123,6 +123,22 @@ class BackendTests(unittest.TestCase):
             time.sleep(0.05)
         self.fail("Desktop queue timed out")
 
+    def test_clipboard_png_upload_download_link_and_cleanup(self):
+        from test_clipboard import PNG
+        controller = self.new_controller()
+        controller.add_clipboard(PNG).result(timeout=20)
+        self.wait_idle()
+        job, = controller.snapshot()["jobs"]
+        self.assertEqual(job["status"], "done")
+        self.assertTrue(job["name"].startswith("Screenshot-"))
+        self.assertTrue(job["name"].endswith(".png"))
+        code, headers, downloaded = self.http("GET", urlsplit(job["link"]).path)
+        self.assertEqual(code, 200)
+        self.assertEqual(downloaded, PNG)
+        self.assertFalse(Path(job["source"]).exists())
+        self.assertEqual(len(self.completions), 1)
+        self.assertEqual(self.completions[0]["links"], [job["link"]])
+
     def test_upload_batch_hash_empty_password_revoke_and_device_revocation(self):
         controller = self.new_controller()
         source = self.root / "Отчёт с пробелами 日本語.bin"

@@ -13,6 +13,8 @@ from .bridge import ClientError, safe_message
 from .controller import Controller
 from .secrets import SecretStore
 from .state import StateStore
+from .clipboard import MAX_BYTES, MAX_PIXELS
+from .hotkeys import GlobalShortcut
 
 APP_ID = "io.github.panktrue.ShareFile"
 LABELS = {"queued": "В очереди", "uploading": "Загружается", "paused": "На паузе",
@@ -45,6 +47,7 @@ class Application(Gtk.Application):
                  application_id=APP_ID):
         super().__init__(application_id=application_id, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
         for option, description in (("background", "Загрузить выбранные файлы в фоне"),
+                                    ("clipboard", "Загрузить изображение из буфера обмена"),
                                     ("share", "Загрузить и поделиться"), ("quit", "Остановить очередь и выйти")):
             self.add_main_option(option, 0, GLib.OptionFlags.NONE, GLib.OptionArg.NONE, description, None)
         self.helper = Path(helper or Path(__file__).resolve().parents[1] / "sharefile-client")
@@ -56,6 +59,8 @@ class Application(Gtk.Application):
         self._snapshot = {}
         self._settings_identity = None
         self._quitting = False
+        self._capturing_clipboard = False
+        self.shortcut = None
 
     def do_startup(self):
         Gtk.Application.do_startup(self)
@@ -74,6 +79,8 @@ class Application(Gtk.Application):
             self.build_window()
             self.build_tray()
             self.refresh(self.controller.snapshot())
+            self.shortcut = GlobalShortcut(self.get_application_id(), self.upload_clipboard, self.shortcut_label.set_text)
+            self.shortcut.start()
             self.controller.restore()
         except Exception as error:
             dialog = Gtk.MessageDialog(message_type=Gtk.MessageType.ERROR, buttons=Gtk.ButtonsType.CLOSE,
@@ -94,6 +101,9 @@ class Application(Gtk.Application):
             self.stop(command_line)
             return 0
         try:
+            if options.contains("clipboard"):
+                self.upload_clipboard()
+                return 0
             paths = file_paths(command_line.get_arguments()[1:], command_line)
             background = options.contains("background") or options.contains("share")
             snapshot = self.controller.snapshot()
@@ -170,9 +180,12 @@ class Application(Gtk.Application):
         tools = Gtk.Box(spacing=8)
         self.add_button = self.button("Загрузить и поделиться…", self.choose_files, tools)
         self.upload_folder_button = self.button("Загрузить папку…", self.choose_directory, tools)
+        self.button("Из буфера", self.upload_clipboard, tools).set_tooltip_text("Скриншот → Ctrl+Alt+U → ссылка")
         self.button("Пауза всех", self.controller.pause_all, tools)
         self.button("Удалить завершённые", self.controller.clear_finished, tools)
         page.pack_start(tools, False, False, 0)
+        self.shortcut_label = Gtk.Label(label="Изображение из буфера: Ctrl+Alt+U", xalign=0, wrap=True)
+        page.pack_start(self.shortcut_label, False, False, 0)
         self.rows = Gtk.ListStore(str, str, str, int, str, str)
         self.tree = Gtk.TreeView(model=self.rows)
         for title, column in (("Файл или папка", 1), ("Размер", 2), ("Состояние", 4)):
@@ -247,7 +260,7 @@ class Application(Gtk.Application):
         self.tray.set_tooltip_text("ShareFile — загрузить и поделиться")
         self.tray.connect("activate", lambda *_: self.show())
         self.tray_menu = Gtk.Menu()
-        for title, callback in (("Открыть ShareFile", self.show), ("История ссылок", self.show_history), ("Пауза всех", self.controller.pause_all), ("Выйти", self.stop)):
+        for title, callback in (("Открыть ShareFile", self.show), ("Из буфера (Ctrl+Alt+U)", self.upload_clipboard), ("История ссылок", self.show_history), ("Пауза всех", self.controller.pause_all), ("Выйти", self.stop)):
             item = Gtk.MenuItem(label=title)
             item.connect("activate", lambda item, callback=callback: self.invoke(callback))
             self.tray_menu.append(item)
@@ -447,8 +460,75 @@ class Application(Gtk.Application):
             self.controller.add_files(dialog.get_filenames())
         dialog.destroy()
 
+    def upload_clipboard(self, activation_token=""):
+        if self._capturing_clipboard or self._quitting:
+            return
+        if not self.controller.snapshot()["connected"]:
+            self.controller.set_notice("Сначала подключите хранилище")
+            self.notebook.set_current_page(1)
+            self.show()
+            return
+        self._capturing_clipboard = True
+        display = Gdk.Display.get_default()
+        wayland = "Wayland" in display.__gtype__.name
+        if wayland:
+            # Native Wayland gives clipboard contents only to focused clients.
+            if activation_token and hasattr(display, "set_startup_notification_id"):
+                display.set_startup_notification_id(activation_token)
+            self.show()
+        def received(clipboard, image, data):
+            self._capturing_clipboard = False
+            try:
+                if image is None:
+                    raise ClientError("В буфере обмена нет изображения. Скопируйте скриншот и повторите")
+                if image.get_width() * image.get_height() > MAX_PIXELS:
+                    raise ClientError("Изображение слишком большое (максимум 25 Мп)")
+                ok, png = image.save_to_bufferv("png", [], [])
+                if not ok or len(png) > MAX_BYTES:
+                    raise ClientError("Изображение слишком большое (максимум 32 МиБ)")
+                future = self.controller.add_clipboard(bytes(png))
+                if future:
+                    def finished(result):
+                        try:
+                            result.result()
+                        except Exception as error:
+                            message = safe_message(error)
+                            idle(lambda: self.clipboard_failure(message))
+                    future.add_done_callback(finished)
+            except Exception as error:
+                self.clipboard_failure(safe_message(error))
+        def request():
+            Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).request_image(received, None)
+        if wayland and not self.window.is_active():
+            self._wait_clipboard_focus(request)
+        else:
+            request()
+
+    def _wait_clipboard_focus(self, callback):
+        deadline = time.monotonic() + 3
+        def check():
+            if self._quitting:
+                self._capturing_clipboard = False
+                return GLib.SOURCE_REMOVE
+            if self.window.is_active():
+                callback()
+                return GLib.SOURCE_REMOVE
+            if time.monotonic() >= deadline:
+                self._capturing_clipboard = False
+                self.clipboard_failure("Нажмите «Из буфера» в окне ShareFile: рабочее окружение не разрешило доступ к буферу в фоне")
+                return GLib.SOURCE_REMOVE
+            return GLib.SOURCE_CONTINUE
+        GLib.timeout_add(50, check)
+
+    def clipboard_failure(self, message):
+        self.controller.set_notice(message)
+        if self.controller.snapshot()["settings"]["notify_uploads"]:
+            self.notification("Не удалось загрузить изображение", message)
+
     def clipboard(self, links):
         try:
+            if "Wayland" in Gdk.Display.get_default().__gtype__.name and not self.window.is_active():
+                return False
             clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
             text = "\n".join(links)
             clipboard.set_text(text, -1)
@@ -560,6 +640,8 @@ class Application(Gtk.Application):
         if self._quitting:
             return
         self._quitting = True
+        if self.shortcut:
+            self.shortcut.stop()
         self.message("Останавливается передача…")
         def finish():
             # Retain the remote command line until the helper has stopped, so an

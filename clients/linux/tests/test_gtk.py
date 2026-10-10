@@ -8,6 +8,7 @@ import tempfile
 import time
 import unittest
 import uuid
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 GTK_AVAILABLE = False
@@ -72,6 +73,7 @@ class GtkTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        cls.app.shortcut.stop()
         cls.app.controller.close().result(timeout=5)
         cls.app.tray.set_visible(False)
         cls.app.window.destroy()
@@ -86,6 +88,104 @@ class GtkTests(unittest.TestCase):
         self.assertTrue(self.app.window.get_visible())
         self.assertTrue(self.app.hide_window())
         self.assertFalse(self.app.window.get_visible())
+
+    def test_global_shortcut_captures_image_while_main_window_is_hidden(self):
+        from gi.repository import GdkPixbuf
+        self.assertIsNotNone(self.app.shortcut.keybinder)
+        notifications = []
+        original = self.app.notification
+        self.app.notification = lambda title, body: notifications.append((title, body))
+        try:
+            clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+            image = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 2, 2)
+            image.fill(0xff000080)
+            clipboard.set_image(image)
+            self.app.window.hide()
+            subprocess.run(["xdotool", "key", "ctrl+alt+u"], check=True, timeout=5)
+            for _ in range(500):
+                self.spin()
+                if notifications:
+                    break
+                time.sleep(0.01)
+            self.wait_idle()
+            self.assertEqual(len(notifications), 1)
+            self.assertIn("Ссылки скопированы", notifications[0][1])
+            self.assertIn("/s/", clipboard.wait_for_text())
+            self.assertFalse(self.app.window.get_visible())
+            self.assertEqual(list(self.root.glob("state/clipboard/Screenshot-*.png")), [])
+            before = len(self.app.controller.snapshot()["jobs"])
+            self.app.upload_clipboard()  # The clipboard now contains text, not an image.
+            for _ in range(100):
+                self.spin()
+                if not self.app._capturing_clipboard:
+                    break
+                time.sleep(0.01)
+            self.assertEqual(len(self.app.controller.snapshot()["jobs"]), before)
+            self.assertIn("нет изображения", self.app.controller.snapshot()["notice"])
+        finally:
+            self.app.notification = original
+
+    def test_wayland_portal_protocol_registration_binding_and_activation(self):
+        from sharefile_linux import hotkeys
+        bus = "io.github.panktrue.ShareFile.TestPortal"
+        connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        result = connection.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+            "RequestName", GLib.Variant("(su)", (bus, 0)), None, Gio.DBusCallFlags.NONE, 1000, None)
+        self.assertEqual(result.unpack()[0], 1)
+        xml = '''<node>
+        <interface name="org.freedesktop.host.portal.Registry"><method name="Register">
+          <arg type="s" direction="in"/><arg type="a{sv}" direction="in"/></method></interface>
+        <interface name="org.freedesktop.portal.GlobalShortcuts"><method name="CreateSession">
+          <arg type="a{sv}" direction="in"/><arg type="o" direction="out"/></method>
+          <method name="BindShortcuts"><arg type="o" direction="in"/><arg type="a(sa{sv})" direction="in"/>
+          <arg type="s" direction="in"/><arg type="a{sv}" direction="in"/><arg type="o" direction="out"/></method></interface>
+        </node>'''
+        info = Gio.DBusNodeInfo.new_for_xml(xml)
+        calls, activations, notices = [], [], []
+        session = "/org/freedesktop/portal/desktop/session/sharefile/test"
+        def called(conn, sender, path, interface, method, parameters, invocation):
+            values = parameters.unpack()
+            calls.append((method, values))
+            if method == "Register":
+                invocation.return_value(GLib.Variant("()", ()))
+                return
+            options = values[-1]
+            request = "/org/freedesktop/portal/desktop/request/" + sender[1:].replace(".", "_") + "/" + options["handle_token"]
+            invocation.return_value(GLib.Variant("(o)", (request,)))
+            output = {"session_handle": GLib.Variant("s", session)} if method == "CreateSession" else {
+                "shortcuts": GLib.Variant("a(sa{sv})", [(hotkeys.SHORTCUT, {"trigger_description": GLib.Variant("s", "Ctrl+Alt+U")})])}
+            GLib.idle_add(lambda: (conn.emit_signal(sender, request, "org.freedesktop.portal.Request", "Response",
+                GLib.Variant("(ua{sv})", (0, output))), GLib.SOURCE_REMOVE)[1])
+        registrations = [connection.register_object(hotkeys.PATH, interface, called, None, None) for interface in info.interfaces]
+        shortcut = hotkeys.GlobalShortcut("io.github.panktrue.ShareFile", activations.append, notices.append)
+        try:
+            with patch.object(hotkeys, "BUS", bus), patch.dict(os.environ, {"WAYLAND_DISPLAY": "test"}):
+                shortcut.start()
+                for _ in range(500):
+                    self.spin()
+                    if any("Ctrl+Alt+U" in notice for notice in notices):
+                        break
+                    time.sleep(0.01)
+                self.assertEqual([method for method, _ in calls], ["Register", "CreateSession", "BindShortcuts"])
+                self.assertEqual(calls[0][1][0], "io.github.panktrue.ShareFile")
+                self.assertEqual(calls[2][1][1][0][1]["preferred_trigger"], "CTRL+ALT+u")
+                for identity in ("different-shortcut", hotkeys.SHORTCUT):
+                    connection.emit_signal(None, hotkeys.PATH, hotkeys.INTERFACE, "Activated",
+                        GLib.Variant("(osta{sv})", (session, identity, 123, {"activation_token": GLib.Variant("s", "test-token")})))
+                for _ in range(200):
+                    self.spin()
+                    if activations:
+                        break
+                    time.sleep(0.01)
+                self.assertEqual(activations, ["test-token"])
+                shortcut.stop()
+        finally:
+            if not shortcut.closed:
+                shortcut.stop()
+            for registration in registrations:
+                connection.unregister_object(registration)
+            connection.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "ReleaseName",
+                GLib.Variant("(s)", (bus,)), None, Gio.DBusCallFlags.NONE, 1000, None)
 
     def test_batch_clipboard_before_one_capability_free_notification(self):
         notifications = []

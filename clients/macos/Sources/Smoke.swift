@@ -1,6 +1,47 @@
 import Foundation
 import AppKit
 
+@MainActor func verifyClipboardImages() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("sharefile-clipboard-test-" + UUID().uuidString)
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("ShareFile-image-test-" + UUID().uuidString))
+    defer { pasteboard.releaseGlobally(); try? FileManager.default.removeItem(at: directory) }
+    let spool = ClipboardImages(directory: directory.appendingPathComponent("clipboard"))
+    guard let image = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 2, pixelsHigh: 2, bitsPerSample: 8,
+        samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 8, bitsPerPixel: 32),
+        let png = image.representation(using: .png, properties: [:]) else { throw AppFailure(message: "Clipboard fixture failed") }
+    pasteboard.setData(png, forType: .png)
+    let first = try spool.capture(pasteboard), second = try spool.capture(pasteboard)
+    guard first != second, let decoded = NSBitmapImageRep(data: try Data(contentsOf: first)), decoded.pixelsWide == 2,
+          (try FileManager.default.attributesOfItem(atPath: first.path)[.posixPermissions] as? NSNumber)?.intValue == 0o600 else {
+        throw AppFailure(message: "Clipboard PNG, permissions or unique names failed")
+    }
+    var job = Upload(id: "clipboard-test", source: first.path, name: first.lastPathComponent, size: Int64(png.count),
+        modified: 0, fingerprint: "", folder: "", upload: "", file_id: "", offset: 0)
+    job.status = "paused"
+    spool.reconcile([job])
+    guard FileManager.default.fileExists(atPath: first.path), !FileManager.default.fileExists(atPath: second.path) else {
+        throw AppFailure(message: "Paused clipboard source was lost")
+    }
+    let userFile = directory.appendingPathComponent("Screenshot-personal.png"); try png.write(to: userFile)
+    spool.remove(userFile.path)
+    job.status = "done"; spool.reconcile([job])
+    guard !FileManager.default.fileExists(atPath: first.path), FileManager.default.fileExists(atPath: userFile.path) else {
+        throw AppFailure(message: "Clipboard cleanup touched user files")
+    }
+    pasteboard.clearContents(); pasteboard.setString("a link", forType: .string)
+    do { _ = try spool.capture(pasteboard); throw AppFailure(message: "Text clipboard accepted as image") }
+    catch let error as AppFailure { guard error.message != "Text clipboard accepted as image" else { throw error } }
+    pasteboard.clearContents(); pasteboard.setData(png, forType: .png)
+    let retained = try spool.capture(pasteboard)
+    let state = directory.appendingPathComponent("state.json")
+    try Data("broken checkpoint".utf8).write(to: state)
+    let corrupt = Model(stateURL: state)
+    corrupt.save()
+    guard FileManager.default.fileExists(atPath: retained.path), try String(contentsOf: state, encoding: .utf8) == "broken checkpoint" else {
+        throw AppFailure(message: "Corrupt state destroyed a pending clipboard source")
+    }
+}
+
 // Disposable in-memory credentials keep backend smoke tests out of the user's Keychain.
 final class TestHistorySecrets: @unchecked Sendable {
     private let lock = NSLock()
@@ -133,6 +174,26 @@ func integrationSmokeTest() -> Never {
                     let rejectionDeadline = Date().addingTimeInterval(5)
                     while model.fileErrors.isEmpty && Date() < rejectionDeadline { try await Task.sleep(nanoseconds: 100_000_000) }
                     guard !model.fileErrors.isEmpty else { throw AppFailure(message: "Missing file was not reported") }
+                    let imagePasteboard = NSPasteboard(name: NSPasteboard.Name("ShareFile-smoke-image-" + UUID().uuidString))
+                    defer { imagePasteboard.releaseGlobally() }
+                    let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")!
+                    imagePasteboard.setData(png, forType: .png)
+                    model.setNotifyUploads(true)
+                    let count = model.settings.uploads.count
+                    model.uploadClipboard(imagePasteboard)
+                    let imageDeadline = Date().addingTimeInterval(15)
+                    while (model.settings.uploads.count == count || model.settings.uploads.last?.status != "done") && Date() < imageDeadline {
+                        try await Task.sleep(nanoseconds: 100_000_000)
+                    }
+                    guard let screenshot = model.settings.uploads.last, screenshot.status == "done", screenshot.name.hasSuffix(".png"),
+                          !FileManager.default.fileExists(atPath: screenshot.source), clipboardWrites.last == screenshot.link,
+                          completions.last?.copied == true, completions.last?.names == [screenshot.name] else {
+                        throw AppFailure(message: "Clipboard upload, copy, notification or cleanup failed")
+                    }
+                    let (downloaded, response) = try await URLSession.shared.data(from: URL(string: screenshot.link)!)
+                    guard (response as? HTTPURLResponse)?.statusCode == 200, NSBitmapImageRep(data: downloaded)?.pixelsWide == 1 else {
+                        throw AppFailure(message: "Clipboard screenshot download differs from image")
+                    }
                     let result: [String: Any] = ["links": initialLinks, "files": initialFiles]
                     let encoded = try JSONSerialization.data(withJSONObject: result)
                     try FileManager.default.removeItem(at: directory)

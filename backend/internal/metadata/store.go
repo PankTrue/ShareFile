@@ -46,7 +46,7 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	if version > 2 {
+	if version > 3 {
 		db.Close()
 		return nil, fmt.Errorf("unsupported schema version %d", version)
 	}
@@ -70,6 +70,21 @@ func Open(path string) (*Store, error) {
 				return err
 			}
 			_, err := tx.ExecContext(ctx, "PRAGMA user_version=2")
+			return err
+		})
+		version = 2
+	}
+	if err == nil && version == 2 {
+		err = s.Write(ctx, func(tx *sql.Tx) error {
+			if _, err := tx.ExecContext(ctx, `CREATE TABLE favorites (
+			 user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			 node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+			 PRIMARY KEY(user_id,node_id));
+			 CREATE INDEX favorite_node ON favorites(node_id);
+			 CREATE INDEX node_recent ON nodes(created_at DESC,id) WHERE kind='file' AND deleted_at IS NULL`); err != nil {
+				return err
+			}
+			_, err := tx.ExecContext(ctx, "PRAGMA user_version=3")
 			return err
 		})
 	}

@@ -127,8 +127,12 @@ struct UploadCompletion: Equatable {
     @Published var revokingHistory = Set<String>()
     var sentLinks: [SentLink] { history.forAccount(settings.origin, settings.owner) }
     private let stateURL: URL
+    private let clipboardImages: ClipboardImages
+    private var pendingImages = Set<String>()
+    private var readableState = true
     private let writeClipboard: (String) -> Bool
     var onUploadCompletion: ((UploadCompletion) -> Void)?
+    var onClipboardFailure: ((String) -> Void)?
     var connected: Bool { !token.isEmpty && !settings.owner.isEmpty }
     var canQuitSafely: Bool { activeID == nil }
     var activeCount: Int { settings.uploads.filter { ["queued", "uploading", "sharing"].contains($0.status) }.count }
@@ -139,6 +143,7 @@ struct UploadCompletion: Equatable {
         return NSPasteboard.general.setString($0, forType: .string)
     }) {
         self.stateURL = stateURL
+        clipboardImages = ClipboardImages(directory: stateURL.deletingLastPathComponent().appendingPathComponent("clipboard", isDirectory: true))
         self.history = history ?? LinkHistory(path: stateURL.deletingLastPathComponent().appendingPathComponent("history.json"))
         notice = self.history.loadError
         self.writeClipboard = writeClipboard
@@ -151,14 +156,20 @@ struct UploadCompletion: Equatable {
                 default: break
                 }
             }
+        } else if FileManager.default.fileExists(atPath: stateURL.path) {
+            readableState = false
+            notice = "Не удалось прочитать очередь. Сохраните state.json перед восстановлением"
         }
         serverInput = settings.origin
+        if readableState { clipboardImages.reconcile(settings.uploads) }
     }
     func save() {
+        guard readableState else { notice = "Не удалось прочитать очередь. Сохраните state.json перед восстановлением"; return }
         do {
             try FileManager.default.createDirectory(at: stateURL.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             try JSONEncoder().encode(settings).write(to: stateURL, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: stateURL.path)
+            clipboardImages.reconcile(settings.uploads, pending: pendingImages)
         } catch { notice = "Не удалось сохранить очередь. Проверьте свободное место на Mac" }
     }
     func request(_ operation: String, _ extra: [String: Any] = [:], call: BridgeCall = BridgeCall(), progress: @escaping @Sendable ([String: Any]) -> Void = { _ in }) async throws -> Any {
@@ -198,6 +209,7 @@ struct UploadCompletion: Equatable {
         save()
     }
     func connect() {
+        guard readableState else { notice = "Не удалось прочитать очередь. Сохраните state.json перед восстановлением"; return }
         guard !busy else { return }
         if connected { notice = "Сначала отключите текущее подключение"; return }
         let old = settings.origin
@@ -259,14 +271,33 @@ struct UploadCompletion: Equatable {
         panel.prompt = "Загрузить и поделиться"
         panel.begin { response in if response == .OK { Task { @MainActor in self.add(panel.urls) } } }
     }
-    func add(_ urls: [URL]) {
+    func uploadClipboard(_ pasteboard: NSPasteboard = .general) {
+        guard readableState else { clipboardFailure("Не удалось прочитать очередь. Сохраните state.json перед восстановлением"); return }
+        guard connected, !busy else { page = "settings"; clipboardFailure("Сначала подключите хранилище и дождитесь завершения подключения"); return }
+        guard !settings.folder.isEmpty else { clipboardFailure("Выберите папку назначения"); return }
+        do {
+            let file = try clipboardImages.capture(pasteboard)
+            pendingImages.insert(file.path)
+            add([file], clipboardSource: file.path)
+        } catch { clipboardFailure(error.localizedDescription) }
+    }
+    private func clipboardFailure(_ message: String) { notice = message; onClipboardFailure?(message) }
+    func add(_ urls: [URL], clipboardSource: String? = nil) {
+        defer {
+            if let clipboardSource, !connected || settings.folder.isEmpty || (!password.isEmpty && !(12...256).contains(password.utf8.count)) {
+                pendingImages.remove(clipboardSource); clipboardImages.remove(clipboardSource)
+            }
+        }
         guard connected else { pendingFiles.append(contentsOf: urls); page = "settings"; notice = "Подключите хранилище. Выбранные файлы добавятся после подтверждения"; return }
         guard !settings.folder.isEmpty else { notice = "Выберите папку назначения"; return }
         guard password.isEmpty || (12...256).contains(password.utf8.count) else { notice = "Исправьте пароль ссылки в настройках"; return }
         let folder = settings.folder, batch = UUID().uuidString, days = settings.days, never = settings.never
         preparingBatches.insert(batch)
         Task {
-            defer { preparingBatches.remove(batch); finishBatch(batch) }
+            defer {
+                preparingBatches.remove(batch); finishBatch(batch)
+                if let clipboardSource { pendingImages.remove(clipboardSource); clipboardImages.reconcile(settings.uploads, pending: pendingImages) }
+            }
             for url in urls {
                 if settings.uploads.count >= 100 { notice = "В очереди уже 100 загрузок. Удалите завершённые записи"; break }
                 do {
@@ -276,7 +307,10 @@ struct UploadCompletion: Equatable {
                     var job = try JSONDecoder().decode(Upload.self, from: dataWithJobDefaults(data))
                     job.batch = batch; job.days = days; job.never = never
                     settings.uploads.append(job); save()
-                } catch { fileErrors.append(url.lastPathComponent + ": " + error.localizedDescription) }
+                } catch {
+                    fileErrors.append(url.lastPathComponent + ": " + error.localizedDescription)
+                    if clipboardSource != nil { clipboardFailure(error.localizedDescription) }
+                }
             }
             page = "files"; suspended = false; pump()
         }

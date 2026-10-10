@@ -31,7 +31,7 @@ jobs:
       - name: Install native desktop test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 libsecret-tools gnome-keyring xvfb dbus-x11 desktop-file-utils
+          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-keybinder-3.0 libsecret-tools gnome-keyring xvfb dbus-x11 desktop-file-utils xdotool
       - name: Core race tests, queue, bridge and installer
         run: make linux-check PYTHON=/usr/bin/python3
       - name: Real backend transfers, TCP interruption and restart

@@ -8,6 +8,7 @@ import SwiftUI
     private var pendingFinderFiles: [URL] = []
     private var connectionRestored = false
     private var notifications: UploadNotifications!
+    private var clipboardHotKey: ClipboardHotKey?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         prepareModel()
@@ -17,6 +18,9 @@ import SwiftUI
         notifications.isEnabled = { [weak self] in self?.model.settings.notifyUploads == true }
         model.onUploadCompletion = { [weak self] completion in
             Task { @MainActor [weak self] in await self?.notifications.send(completion) }
+        }
+        model.onClipboardFailure = { [weak self] message in
+            Task { @MainActor [weak self] in await self?.notifications.sendFailure(message) }
         }
         NSApp.servicesProvider = self
     }
@@ -65,12 +69,15 @@ import SwiftUI
         let recentMenu = NSMenu(); recentMenu.delegate = self; recent.submenu = recentMenu; menu.addItem(recent)
         menu.addItem(withTitle: "Настройки…", action: #selector(settings), keyEquivalent: "")
         menu.addItem(withTitle: "Загрузить и поделиться…", action: #selector(pickFiles), keyEquivalent: "")
+        menu.addItem(withTitle: "Из буфера обмена (⌘⇧U)", action: #selector(uploadClipboard), keyEquivalent: "")
         menu.addItem(withTitle: "Приостановить загрузки", action: #selector(pauseAll), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Завершить", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         for item in menu.items { item.target = self }
         menu.items.last?.target = NSApp
         statusItem.menu = menu
+        do { clipboardHotKey = try ClipboardHotKey { [weak self] in self?.uploadClipboard() } }
+        catch { model.notice = error.localizedDescription }
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
         if (notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool ?? true) && pendingFinderFiles.isEmpty { showWindow() }
@@ -113,6 +120,11 @@ import SwiftUI
     @objc func revokeRecent(_ sender: NSMenuItem) { if let entry = sender.representedObject as? SentLink { model.revokeHistory(entry) } }
     @objc func settings() { model.page = "settings"; showWindow() }
     @objc func pickFiles() { showWindow(); model.chooseFiles() }
+    @objc func uploadClipboard() {
+        model.uploadClipboard()
+        if !model.connected { showWindow() }
+        if !model.notice.isEmpty && model.activeCount == 0 { NSSound.beep() }
+    }
     @objc func pauseAll() { model.pauseAll() }
     @objc func about() {
         NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "ShareFile", .applicationVersion: "0.1.0", .credits: NSAttributedString(string: "Личное хранилище на Keenetic\nmacOS 13+ · Apple Silicon / Intel")])
@@ -141,7 +153,7 @@ import SwiftUI
         model.add(files)
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
-    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { model?.quit(); return .terminateNow }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { clipboardHotKey?.stop(); model?.quit(); return .terminateNow }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     static func verifySilentFinderLaunch(model: Model, pasteboard: NSPasteboard) throws {
@@ -149,6 +161,7 @@ import SwiftUI
         let delegate = AppDelegate(); delegate.model = model
         delegate.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification, userInfo: [NSApplication.launchIsDefaultUserInfoKey: false]))
         defer {
+            delegate.clipboardHotKey?.stop()
             NSStatusBar.system.removeStatusItem(delegate.statusItem)
             delegate.window.close()
             NSApp.servicesProvider = nil
@@ -179,6 +192,7 @@ if CommandLine.arguments.contains("--self-test") {
         let encoded = try JSONEncoder().encode(sample)
         guard !String(decoding: encoded, as: UTF8.self).contains("private-token") else { throw AppFailure(message: "Public link leaked into checkpoint") }
         try MainActor.assumeIsolated {
+            try verifyClipboardImages()
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("sharefile-native-test-" + UUID().uuidString)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: directory) }

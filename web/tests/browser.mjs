@@ -166,6 +166,28 @@ try {
   await user.getByRole('button', { name: 'Проекты', exact: true }).click();
   await visible(user.getByText('Читатель', { exact: true }));
   assert.equal(await user.getByRole('button', { name: 'Загрузить файлы', exact: true }).count(), 0);
+  // Reader bookmarks are personal and do not require editing a shared folder.
+  await user
+    .getByRole('button', { name: 'Добавить в избранное текущую папку', exact: true })
+    .click();
+  await visible(
+    user.getByRole('button', { name: 'Убрать из избранного текущую папку', exact: true }),
+  );
+  await user
+    .getByRole('navigation', { name: 'Основное меню' })
+    .getByRole('button', { name: 'Избранное', exact: true })
+    .click();
+  await visible(user.getByRole('button', { name: 'Проекты', exact: true }));
+  assert.equal(await user.getByRole('button', { name: 'Загрузить файлы', exact: true }).count(), 0);
+  await user.reload();
+  await visible(user.getByRole('button', { name: 'Убрать из избранного Проекты', exact: true }));
+  await user.getByRole('button', { name: 'Проекты', exact: true }).click();
+  await user
+    .getByRole('button', { name: 'Убрать из избранного текущую папку', exact: true })
+    .click();
+  await visible(
+    user.getByRole('button', { name: 'Добавить в избранное текущую папку', exact: true }),
+  );
   await admin.getByRole('button', { name: 'Доступ к текущей папке' }).click();
   await acl.getByLabel('Роль alice', { exact: true }).selectOption('3');
   await acl.getByRole('button', { name: 'Готово' }).click();
@@ -946,6 +968,109 @@ try {
     await user.getByRole('region', { name: 'Действия с выбранными файлами' }).count(),
     0,
   );
+  // Personal shortcuts reuse preview, download, navigation and selection actions.
+  const nav = user.getByRole('navigation', { name: 'Основное меню' });
+  await nav.getByRole('button', { name: 'Избранное', exact: true }).click();
+  await visible(user.getByRole('heading', { name: 'Избранное', exact: true }));
+  await visible(user.getByRole('heading', { name: 'В избранном пока пусто', exact: true }));
+  await user.goto(publicURL + `/#/files/${projects}`);
+  await visible(user.getByRole('button', { name: 'Документ.txt', exact: true }));
+  await user
+    .getByRole('button', { name: 'Добавить в избранное Документ.txt', exact: true })
+    .click();
+  await visible(
+    user.getByRole('button', { name: 'Убрать из избранного Документ.txt', exact: true }),
+  );
+  await user
+    .getByRole('button', { name: 'Добавить в избранное текущую папку', exact: true })
+    .click();
+  await visible(
+    user.getByRole('button', { name: 'Убрать из избранного текущую папку', exact: true }),
+  );
+  await nav.getByRole('button', { name: 'Избранное', exact: true }).click();
+  await visible(user.getByRole('heading', { name: 'Избранное', exact: true }));
+  await visible(user.getByRole('button', { name: 'Документ.txt', exact: true }));
+  assert.equal(await user.locator('.file-table tbody tr').count(), 2);
+  assert.equal(
+    await user
+      .getByRole('button', { name: 'Убрать из избранного Документ.txt', exact: true })
+      .getAttribute('aria-pressed'),
+    'true',
+  );
+  await user.reload();
+  await visible(user.getByRole('button', { name: 'Документ.txt', exact: true }));
+  await user.getByLabel('Поиск в разделе Избранное', { exact: true }).fill('ДОКУМЕНТ');
+  await fileSearch.getByRole('button', { name: 'Найти', exact: true }).click();
+  await user.waitForFunction(() => document.querySelectorAll('.file-table tbody tr').length === 1);
+  await visible(user.getByRole('button', { name: 'Документ.txt', exact: true }));
+  assert.equal(await user.locator('.file-table tbody tr').count(), 1);
+  await user.getByRole('button', { name: 'Документ.txt', exact: true }).click();
+  await visible(user.getByRole('dialog').getByLabel('Текст Документ.txt'));
+  await user.getByRole('dialog').getByRole('button', { name: 'Закрыть', exact: true }).click();
+  assert.equal(
+    await (await userContext.request.get(publicURL + replacement)).text(),
+    'replacement',
+  );
+  await fileSearch.getByRole('button', { name: 'Сбросить поиск', exact: true }).click();
+  await visible(user.getByRole('button', { name: 'Проекты', exact: true }));
+  await user.screenshot({ path: join(screenshots, 'favorites-desktop.png'), fullPage: true });
+  await user.setViewportSize({ width: 390, height: 844 });
+  assert.equal(
+    await user.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    true,
+  );
+  await user.screenshot({ path: join(screenshots, 'favorites-mobile.png'), fullPage: false });
+  await user.getByRole('button', { name: 'Открыть папку для Документ.txt', exact: true }).click();
+  await visible(user.getByRole('heading', { name: 'Проекты', exact: true }));
+  await visible(
+    user.getByRole('button', { name: 'Убрать из избранного текущую папку', exact: true }),
+  );
+  await user.setViewportSize({ width: 1440, height: 960 });
+  await nav.getByRole('button', { name: 'Избранное', exact: true }).click();
+  await visible(user.getByRole('heading', { name: 'Избранное', exact: true }));
+  await visible(user.getByRole('button', { name: 'Документ.txt', exact: true }));
+  await user.getByLabel('Выбрать Документ.txt', { exact: true }).check();
+  await nav.getByRole('button', { name: 'Недавние', exact: true }).click();
+  await visible(user.getByRole('heading', { name: 'Недавние', exact: true }));
+  await visible(user.getByRole('button', { name: 'Документ.txt', exact: true }));
+  assert.equal(
+    await user.getByRole('region', { name: 'Действия с выбранными файлами' }).count(),
+    0,
+  );
+  const recentResponse = await userContext.request.get(publicURL + '/api/v1/search?view=recent');
+  assert.equal(recentResponse.status(), 200);
+  const recentItems = (await recentResponse.json()).items;
+  assert.ok(recentItems.every((item) => item.kind === 'file'));
+  assert.ok(
+    recentItems.every((item, i) => i === 0 || recentItems[i - 1].created_at >= item.created_at),
+  );
+  assert.deepEqual(
+    await user.locator('.file-table .name-button').allTextContents(),
+    recentItems.map((item) => item.name),
+  );
+  await user.screenshot({ path: join(screenshots, 'recent-desktop.png'), fullPage: true });
+  await user.setViewportSize({ width: 390, height: 844 });
+  assert.equal(
+    await user.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    true,
+  );
+  await user.screenshot({ path: join(screenshots, 'recent-mobile.png'), fullPage: false });
+  await user.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await user.screenshot({ path: join(screenshots, 'recent-mobile-bottom.png'), fullPage: false });
+  await user.evaluate(() => window.scrollTo(0, 0));
+  await user.setViewportSize({ width: 1440, height: 960 });
+  await user
+    .getByRole('button', { name: 'Убрать из избранного Документ.txt', exact: true })
+    .click();
+  await visible(
+    user.getByRole('button', { name: 'Добавить в избранное Документ.txt', exact: true }),
+  );
+  await nav.getByRole('button', { name: 'Избранное', exact: true }).click();
+  await visible(user.getByRole('heading', { name: 'Избранное', exact: true }));
+  await visible(user.getByRole('button', { name: 'Проекты', exact: true }));
+  assert.equal(await user.getByRole('button', { name: 'Документ.txt', exact: true }).count(), 0);
+  await user.getByRole('button', { name: 'Убрать из избранного Проекты', exact: true }).click();
+  await visible(user.getByRole('heading', { name: 'В избранном пока пусто', exact: true }));
   // Responsive layout and horizontal overflow, including real loaded rows.
   await user.goto(publicURL + `/#/files/${projects}`);
   await visible(user.getByRole('button', { name: 'Документ.txt', exact: true }));
@@ -988,7 +1113,7 @@ try {
   assert.equal((await publicAdmin.request.get(publicURL + '/api/v1/admin/users')).status(), 404);
   assert.deepEqual(errors, [], 'Browser errors/CSP violations');
   console.log(
-    'Browser acceptance passed: auth, private admin, users/groups/ACL, reader/manager UI, chunked upload and SHA-256, sharing, rename/move/replace/revoke/trash/restore, lost-response resume, device pairing/revocation, settings/import, password-protected live folder, public previews, authenticated gallery without shares, escaped and truncated text, native PDF rendering, audio/video playback and seeking, player cleanup, unsupported/failed media fallback, global Unicode search with combined filters, safe folder paths, search pagination beyond 100 results, streaming ZIP downloads with nested and empty folders, real directory drag/drop with empty folders and duplicate basenames, one folder link, directory picker, bulk selection/move/trash/collect/share and selection ZIPs, selection reset on navigation/search, mobile layout, logout.',
+    'Browser acceptance passed: auth, private admin, users/groups/ACL, reader/manager UI, chunked upload and SHA-256, sharing, rename/move/replace/revoke/trash/restore, lost-response resume, device pairing/revocation, settings/import, password-protected live folder, public previews, authenticated gallery without shares, escaped and truncated text, native PDF rendering, audio/video playback and seeking, player cleanup, unsupported/failed media fallback, global Unicode search with combined filters, safe folder paths, search pagination beyond 100 results, streaming ZIP downloads with nested and empty folders, real directory drag/drop with empty folders and duplicate basenames, one folder link, directory picker, bulk selection/move/trash/collect/share and selection ZIPs, selection reset on navigation/search, personal persistent reader bookmarks, favorites search/preview/folder navigation/removal, recent completed files and ordering, mobile layout, logout.',
   );
 } catch (error) {
   if (browser)

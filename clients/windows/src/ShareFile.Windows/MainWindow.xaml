@@ -16,6 +16,7 @@
         <Grid Margin="16"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <WrapPanel><Button Content="Выбрать файлы…" Command="{Binding ChooseFilesCommand}"/>
             <Button Content="Загрузить папку…" Command="{Binding ChooseDirectoryCommand}"/>
+            <Button Content="Из буфера (Ctrl+Alt+U)" Command="{Binding UploadClipboardCommand}"/>
             <Button Content="Пауза для всех" Command="{Binding PauseAllCommand}"/></WrapPanel>
           <TextBlock Grid.Row="1" Margin="0,4,0,16" TextWrapping="Wrap"><Run Text="Папка назначения: "/><Run Text="{Binding FolderName}"/><Run Text=". Перетащите файлы или папку в окно. Для папки создаётся одна ссылка."/></TextBlock>
           <DataGrid Grid.Row="2" ItemsSource="{Binding Jobs}" SelectedItem="{Binding SelectedJob}" AutoGenerateColumns="False"

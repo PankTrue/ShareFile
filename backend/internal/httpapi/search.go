@@ -16,7 +16,7 @@ func (a *App) searchNodes(w http.ResponseWriter, r *http.Request, u identity.Act
 		return
 	}
 	values := r.URL.Query()
-	o := files.SearchOptions{Query: values.Get("query"), Type: values.Get("type"), Limit: limit, Offset: offset}
+	o := files.SearchOptions{Query: values.Get("query"), Type: values.Get("type"), View: values.Get("view"), Limit: limit, Offset: offset}
 	for _, filter := range []struct {
 		name  string
 		value **int64

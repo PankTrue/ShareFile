@@ -70,8 +70,9 @@ def install(source, home=None, autostart=False, check=True):
     command = desktop_exec(target["launcher"])
     desktop = (f"[Desktop Entry]\nType=Application\nName=ShareFile\nComment=Загрузить файлы и скопировать ссылки\n"
                f"Exec={command} -- %F\nIcon={APP_ID}\nTerminal=false\nCategories=Network;Utility;\n"
-               "StartupNotify=true\nActions=Share;\n\n[Desktop Action Share]\nName=Загрузить и поделиться\n"
-               f"Exec={command} --background -- %F\n")
+               "StartupNotify=true\nActions=Share;UploadClipboard;\n\n[Desktop Action Share]\nName=Загрузить и поделиться\n"
+               f"Exec={command} --background -- %F\n"
+               f"\n[Desktop Action UploadClipboard]\nName=Из буфера обмена\nExec={command} --clipboard\nIcon={APP_ID}\n")
     write(target["desktop"], desktop)
     write(target["icon"], (source / "resources/sharefile.svg").read_text(encoding="utf-8"))
     # Nautilus passes real argv for local selections. Avoid newline-delimited env variables.

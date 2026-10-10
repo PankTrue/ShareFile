@@ -20,10 +20,16 @@ import UserNotifications
     }
 
     func send(_ completion: UploadCompletion) async {
+        await send(title: completion.title, body: completion.body)
+    }
+    func sendFailure(_ message: String) async {
+        await send(title: "Не удалось загрузить изображение", body: message)
+    }
+    private func send(title: String, body: String) async {
         guard isEnabled(), await requestPermission(), isEnabled() else { return }
         let content = UNMutableNotificationContent()
-        content.title = completion.title
-        content.body = completion.body
+        content.title = title
+        content.body = body
         // Public links and device tokens never enter Notification Center's persisted payload.
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         do { try await center.add(request) }

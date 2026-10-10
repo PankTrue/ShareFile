@@ -9,6 +9,38 @@ namespace ShareFile.Windows.Tests;
 public sealed class WindowTests
 {
     [Fact]
+    public async Task NativeClipboardSupportsBitmapAndPngAndShortcutIsReleased()
+    {
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var image = System.Windows.Media.Imaging.BitmapSource.Create(2, 2, 96, 96,
+                    System.Windows.Media.PixelFormats.Bgra32, null, new byte[16], 8);
+                Clipboard.SetImage(image);
+                var bitmap = ClipboardUpload.ReadPngAsync().GetAwaiter().GetResult();
+                Assert.True(bitmap.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }));
+                var data = new DataObject(); data.SetData("PNG", new MemoryStream(bitmap)); Clipboard.SetDataObject(data);
+                var png = ClipboardUpload.ReadPngAsync().GetAwaiter().GetResult();
+                using var stream = new MemoryStream(png);
+                var decoded = System.Windows.Media.Imaging.BitmapFrame.Create(stream);
+                Assert.Equal(2, decoded.PixelWidth); Assert.Equal(2, decoded.PixelHeight);
+                Clipboard.SetText("not an image");
+                Assert.Throws<ClientException>(() => ClipboardUpload.ReadPngAsync().GetAwaiter().GetResult());
+                using (var shortcut = new ClipboardHotKey(() => { }))
+                    Assert.Throws<ClientException>(() => new ClipboardHotKey(() => { }));
+                using var rebound = new ClipboardHotKey(() => { });
+                Clipboard.Clear();
+                completed.SetResult();
+            }
+            catch (Exception error) { completed.TrySetException(error); }
+        });
+        thread.SetApartmentState(ApartmentState.STA); thread.Start();
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
     public async Task WindowLoadsXamlResourcesAndStaysHiddenUntilRequested()
     {
         var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

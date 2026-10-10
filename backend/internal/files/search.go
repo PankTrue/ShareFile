@@ -12,7 +12,7 @@ import (
 )
 
 type SearchOptions struct {
-	Query, Type                 string
+	Query, Type, View           string
 	CreatedAfter, CreatedBefore *int64
 	MinSize, MaxSize            *int64
 	Limit, Offset               int
@@ -26,6 +26,7 @@ type SearchFolder struct {
 type SearchNode struct {
 	metadata.Node
 	EffectiveRole int            `json:"effective_role"`
+	Favorite      bool           `json:"favorite"`
 	Path          []SearchFolder `json:"path"`
 }
 
@@ -35,6 +36,9 @@ type SearchResult struct {
 }
 
 func (o SearchOptions) valid() bool {
+	if o.View != "" && o.View != "favorites" && o.View != "recent" {
+		return false
+	}
 	if len(o.Query) > 240 || !utf8.ValidString(o.Query) || o.Limit < 1 || o.Limit > 100 || o.Offset < 0 {
 		return false
 	}
@@ -105,8 +109,15 @@ func (s *Service) Search(ctx context.Context, user string, o SearchOptions) (Sea
 	 UNION SELECT n.id,r.role FROM nodes n JOIN reachable r ON n.parent_id=r.id WHERE n.deleted_at IS NULL
 	), allowed AS (SELECT id,max(role) AS role FROM reachable GROUP BY id)
 	 SELECT n.id,n.parent_id,n.owner_id,n.name,n.kind,n.size,n.created_at,n.deleted_at,n.trash_root,a.role
+	 ,EXISTS(SELECT 1 FROM favorites f WHERE f.user_id=? AND f.node_id=n.id)
 	 FROM nodes n JOIN allowed a ON a.id=n.id WHERE n.deleted_at IS NULL`
-	args := []any{user, user, user, user}
+	args := []any{user, user, user, user, user}
+	if o.View == "favorites" {
+		query += " AND EXISTS(SELECT 1 FROM favorites f WHERE f.user_id=? AND f.node_id=n.id)"
+		args = append(args, user)
+	} else if o.View == "recent" {
+		query += " AND n.kind='file'"
+	}
 	if o.Type == "folder" {
 		query += " AND n.kind='folder'"
 	} else if o.Type != "" || o.MinSize != nil || o.MaxSize != nil {
@@ -125,7 +136,11 @@ func (s *Service) Search(ctx context.Context, user string, o SearchOptions) (Sea
 	if o.Type == "folder" && (o.MinSize != nil || o.MaxSize != nil) {
 		query += " AND n.kind='file'"
 	}
-	query += " ORDER BY n.name,n.id"
+	if o.View == "recent" {
+		query += " ORDER BY n.created_at DESC,n.id"
+	} else {
+		query += " ORDER BY n.name,n.id"
+	}
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return out, err
@@ -135,7 +150,7 @@ func (s *Service) Search(ctx context.Context, user string, o SearchOptions) (Sea
 	for rows.Next() {
 		var n SearchNode
 		var parent, trash sql.NullString
-		err = rows.Scan(&n.ID, &parent, &n.OwnerID, &n.Name, &n.Kind, &n.Size, &n.CreatedAt, &n.DeletedAt, &trash, &n.EffectiveRole)
+		err = rows.Scan(&n.ID, &parent, &n.OwnerID, &n.Name, &n.Kind, &n.Size, &n.CreatedAt, &n.DeletedAt, &trash, &n.EffectiveRole, &n.Favorite)
 		if err != nil {
 			break
 		}

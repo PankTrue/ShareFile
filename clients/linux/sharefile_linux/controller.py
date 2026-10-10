@@ -8,6 +8,7 @@ import time
 
 from .bridge import BridgeCall, Cancelled, ClientError, safe_message
 from .history import HistoryStore
+from .clipboard import ClipboardImages
 from .state import CHECKPOINT, UNCERTAIN, require_id, validate_job
 
 
@@ -22,6 +23,8 @@ class Controller:
         self.open_browser, self.bridge_factory = open_browser, bridge_factory
         self.state = store.load()  # Corrupt state stops startup; it is never overwritten.
         self.store.save(self.state)
+        self.clipboard_images = ClipboardImages(store.path.parent / "clipboard")
+        self.clipboard_images.reconcile(self.state["jobs"])
         self.history = HistoryStore(store.path.with_name("history.json"), credentials)
         history_error = ""
         try:
@@ -66,6 +69,7 @@ class Controller:
             change(next_state)
             self.store.save(next_state)
             self.state = next_state
+            self.clipboard_images.reconcile(self.state["jobs"])
         self._publish()
 
     def _update(self, identity, **fields):
@@ -231,6 +235,18 @@ class Controller:
 
     def add_files(self, paths):
         return self._submit(lambda: self._add(list(paths)))
+
+    def add_clipboard(self, png):
+        def add():
+            if not self.token:
+                raise ClientError("Сначала подключите хранилище")
+            source = self.clipboard_images.write(png)
+            try:
+                self._add([source])
+            finally:
+                self.clipboard_images.release(source)
+                self.clipboard_images.reconcile(self.state["jobs"])
+        return self._submit(add)
 
     def _add(self, paths):
         if not self.token:

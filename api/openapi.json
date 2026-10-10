@@ -3449,8 +3449,20 @@
         "tags": [
           "API"
         ],
-        "description": "Searches all accessible live nodes, including personal roots, direct user/group grants and descendants with inherited permissions. Administrators see all live nodes. Deleted or inaccessible nodes never participate in pagination. All filters combine with AND; ordering is by name and ID. Results use a metadata read snapshot with effective roles and accessible ancestor breadcrumbs; private ancestor names/IDs are omitted. No file contents are read. Empty query and filters list all accessible nodes. Changes to permissions apply on the next request.",
+        "description": "Searches all accessible live nodes, including personal roots, direct user/group grants and descendants with inherited permissions. Administrators see all live nodes. Deleted or inaccessible nodes never participate in pagination. All filters combine with AND; ordering is by name and ID. Results use a metadata read snapshot with effective roles and accessible ancestor breadcrumbs; private ancestor names/IDs are omitted. No file contents are read. Empty query and filters list all accessible nodes. Changes to permissions apply on the next request. Optional view=favorites restricts results to the authenticated user's personal bookmarks (including for administrators). Optional view=recent lists only completed file nodes, including imported files, newest created_at first with ID as a stable tie-breaker. Open uploads are not nodes and are omitted. Favorites follow renames/moves, are hidden while trashed or inaccessible, and reappear after restore or regrant. Each result includes personal favorite state.",
         "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "favorites",
+                "recent"
+              ]
+            },
+            "description": "Omit to search all accessible nodes. favorites lists personal file/folder bookmarks; recent lists accessible completed files by creation time descending. All other filters and pagination still apply."
+          },
           {
             "name": "query",
             "in": "query",
@@ -3947,6 +3959,62 @@
         },
         "description": "Requires reader access to every selected node. A single download slot is held until completion; 429 if busy. Supports files and folders, including nested/empty directories. Selected nodes become top-level ZIP entries; duplicate basenames receive numeric suffixes without changing stored names. Streams with fast compression and a 32 KiB buffer, without creating temporary files. Central-directory metadata remains in memory. Access, live subtree membership and selected root positions are rechecked during streaming. Permission loss, movement, cancellation or I/O errors abort the response without finalizing an incomplete ZIP. This is a live traversal, not a snapshot. HEAD only validates selection and download slot and returns headers; it never reads file objects or builds a ZIP."
       }
+    },
+    "/api/v1/nodes/{id}/favorite": {
+      "put": {
+        "summary": "Add a personal favorite",
+        "operationId": "put_api_v1_nodes_id_favorite",
+        "tags": [
+          "API"
+        ],
+        "description": "Requires current reader access to the live file or folder. Does not change permissions. Repeated PUT is safe. Browser requests require CSRF.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Personal bookmark updated; idempotent."
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove a personal favorite",
+        "operationId": "delete_api_v1_nodes_id_favorite",
+        "tags": [
+          "API"
+        ],
+        "description": "Removes only the authenticated user's bookmark. Safe to repeat, including after deletion or loss of access; reveals no node metadata. Browser requests require CSRF.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Personal bookmark updated; idempotent."
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4039,6 +4107,11 @@
             "maximum": 3,
             "readOnly": true,
             "description": "Present in live node GET/list/create views. Mutations independently enforce current access."
+          },
+          "favorite": {
+            "type": "boolean",
+            "readOnly": true,
+            "description": "Personal bookmark state for the authenticated user. Present in live node views and search results."
           }
         },
         "required": [
@@ -4554,6 +4627,11 @@
               "additionalProperties": false
             },
             "description": "Accessible parent folders from the highest accessible ancestor to the immediate parent. Empty for roots and directly granted folders whose parent is inaccessible."
+          },
+          "favorite": {
+            "type": "boolean",
+            "readOnly": true,
+            "description": "Personal bookmark state for the authenticated user. Present in live node views and search results."
           }
         },
         "required": [
@@ -4564,7 +4642,8 @@
           "size",
           "created_at",
           "path",
-          "effective_role"
+          "effective_role",
+          "favorite"
         ],
         "additionalProperties": false
       },

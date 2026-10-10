@@ -170,6 +170,12 @@ summary:focus-visible {
   background: var(--pale);
   color: var(--blue);
 }
+.icon-button.favorite-active {
+  color: #a87412;
+}
+.favorite-active .icon {
+  fill: #fff0ba;
+}
 .icon-button .icon {
   width: 17px;
   height: 17px;

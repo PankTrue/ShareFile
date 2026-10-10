@@ -90,6 +90,7 @@ struct RootView: View {
                 }
                 HStack {
                     Button { model.chooseFiles() } label: { Label("Загрузить и поделиться", systemImage: "plus") }.buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut("o")
+                    Button { model.uploadClipboard() } label: { Label("Из буфера", systemImage: "clipboard") }.help("Скриншот → ⌘⇧U → ссылка в буфере обмена")
                     Spacer()
                     VStack(alignment: .trailing, spacing: 4) {
                         Text("В папку «\(model.settings.folderName)»").font(.system(size: 12, weight: .medium))
