@@ -1,6 +1,6 @@
 # ShareFile
 
-ShareFile is a lightweight file server for a Keenetic Ultra KN-1811 running Entware. It combines a Go backend, SQLite metadata, a React Web UI, and separate macOS, Windows and Linux clients. Files are stored on a dedicated external drive and transferred as streams, with resumable uploads and HTTP Range downloads.
+ShareFile is a lightweight file server designed for deployment on low-powered hardware. It has been tested on a Keenetic Ultra KN-1811 router running Entware. It combines a Go backend, SQLite metadata, a React Web UI, and separate macOS, Windows and Linux clients. Files are stored on a dedicated external drive and transferred as streams, with resumable uploads and HTTP Range downloads.
 
 The default router deployment provides direct HTTPS access at **https://192.168.1.1:8081**, with automatic startup through Entware and automatic process restart. SSH is used for installation and maintenance; browsing and file transfers work directly over LAN or VPN.
 
@@ -379,7 +379,7 @@ make macos-check
 make desktop-smoke
 ```
 
-The installer is `clients/macos/build/ShareFile-macOS-universal.dmg`, with a `.dmg.sha256` checksum. Open the DMG, drag `ShareFile.app` onto **Applications**, eject the image, and launch the installed app. The included `Install.command` supports installation in `~/Applications` without `sudo`. See [docs/macos.md](docs/macos.md).
+The installer is `clients/macos/build/ShareFile-macOS-universal.dmg`, with a `.dmg.sha256` checksum. Its Finder window contains only `ShareFile.app` and the **Applications** link, with a Retina background and a drag-to-install layout. Drag the app onto **Applications**, eject the image, and launch the installed app. See [docs/macos.md](docs/macos.md) for installation and build requirements.
 
 ## Linux client
 
