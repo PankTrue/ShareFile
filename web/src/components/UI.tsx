@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useId, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Icon } from './Icon';
@@ -75,7 +76,7 @@ export function Modal({
           <h2 id={titleID}>{title}</h2>
           {subtitle && <p>{subtitle}</p>}
         </div>
-        <IconButton icon="close" label="Закрыть" onClick={onClose} disabled={busy} />
+        <IconButton icon="close" label={t('Закрыть')} onClick={onClose} disabled={busy} />
       </div>
       {children}
     </dialog>
@@ -85,7 +86,7 @@ export function ErrorBox({ message }: { message?: string }) {
   return message ? (
     <div className="error-box" role="alert">
       <Icon name="info" />
-      <span>{message}</span>
+      <span>{t(message)}</span>
     </div>
   ) : null;
 }
@@ -94,7 +95,7 @@ export function State({
   error,
   empty,
   icon = 'folder',
-  title = 'Здесь пока пусто',
+  title = t('Здесь пока пусто'),
   description,
   action,
   retry,
@@ -112,7 +113,7 @@ export function State({
     return (
       <div className="empty-state" role="status">
         <span className="spinner" />
-        <p>Загружаем…</p>
+        <p>{t('Загружаем…')}</p>
       </div>
     );
   if (error)
@@ -121,7 +122,7 @@ export function State({
         <ErrorBox message={error} />
         {retry && (
           <Button icon="refresh" onClick={retry}>
-            Попробовать снова
+            {t('Попробовать снова')}
           </Button>
         )}
       </div>
@@ -186,10 +187,10 @@ export function Confirm({
       <ErrorBox message={error} />
       <div className="modal-footer">
         <Button onClick={onClose} disabled={busy}>
-          Отмена
+          {t('Отмена')}
         </Button>
         <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} disabled={busy}>
-          {busy ? 'Подождите…' : label}
+          {busy ? t('Подождите…') : label}
         </Button>
       </div>
     </Modal>

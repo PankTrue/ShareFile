@@ -72,6 +72,7 @@ async function visible(locator) {
 }
 async function login(page, url, username) {
   await page.goto(url);
+  await page.getByRole('combobox', { name: /^(Language|Язык)$/ }).selectOption('ru');
   await page.getByLabel('Имя пользователя', { exact: true }).fill(username);
   await page.getByLabel('Пароль', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Войти в хранилище', exact: true }).click();
@@ -117,10 +118,66 @@ try {
     if (i === 99) throw new Error('Backend did not start');
   }
   browser = await chromium.launch({ headless: true, channel: env.PLAYWRIGHT_CHANNEL || undefined });
-  const adminContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const adminContext = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+    locale: 'ru-RU',
+  });
   const admin = await adminContext.newPage();
   observe(admin);
   await admin.goto(adminURL);
+  // New browsers use English even when their OS/browser locale is Russian.
+  await visible(admin.getByRole('heading', { name: 'Storage administration' }));
+  assert.equal(await admin.locator('html').getAttribute('lang'), 'en');
+  await admin.getByLabel('Username', { exact: true }).fill('admin');
+  await admin.getByLabel('Password', { exact: true }).fill('wrong-password');
+  await admin.getByRole('button', { name: 'Sign in to storage', exact: true }).click();
+  await visible(admin.getByRole('alert').getByText('Incorrect username or password.'));
+  await admin.getByLabel('Language', { exact: true }).selectOption('ru');
+  await visible(admin.getByRole('alert').getByText('Неверное имя пользователя или пароль.'));
+  assert.equal(await admin.getByLabel('Имя пользователя', { exact: true }).inputValue(), 'admin');
+  await admin.getByLabel('Язык', { exact: true }).selectOption('en');
+  await admin.getByLabel('Password', { exact: true }).fill(password);
+  await admin.getByRole('button', { name: 'Sign in to storage', exact: true }).click();
+  await visible(admin.getByRole('navigation', { name: 'Main menu' }));
+  // Every page uses English, including static configuration labels and role choices.
+  for (const name of [
+    'Shared folders',
+    'Favorites',
+    'Recent',
+    'Public links',
+    'Trash',
+    'Devices',
+    'Users',
+    'Groups',
+    'Settings',
+    'My files',
+  ]) {
+    await admin.getByRole('button', { name, exact: true }).click();
+    await admin.waitForFunction(() => !document.querySelector('.main-content .spinner'));
+    assert.equal(
+      /[А-Яа-яЁё]/.test(await admin.locator('.main-content').innerText()),
+      false,
+      name + ' contains untranslated UI',
+    );
+  }
+  await admin.getByRole('button', { name: 'New folder', exact: true }).click();
+  await admin.getByRole('dialog').getByLabel('Name', { exact: true }).fill('Draft Русский {0}');
+  const languageTab = await adminContext.newPage();
+  await languageTab.goto(adminURL);
+  await visible(languageTab.getByRole('navigation', { name: 'Main menu' }));
+  await languageTab.getByLabel('Language', { exact: true }).selectOption('ru');
+  await visible(admin.getByRole('dialog').getByLabel('Название', { exact: true }));
+  await languageTab.close();
+  assert.equal(
+    await admin.getByRole('dialog').getByLabel('Название', { exact: true }).inputValue(),
+    'Draft Русский {0}',
+  );
+  await admin.getByRole('dialog').getByRole('button', { name: 'Закрыть', exact: true }).click();
+  await admin.reload();
+  await visible(admin.getByRole('navigation', { name: 'Основное меню' }));
+  assert.equal(await admin.locator('html').getAttribute('lang'), 'ru');
+  assert.equal(await admin.evaluate(() => localStorage.getItem('sharefile.language')), 'ru');
+  await admin.getByRole('button', { name: 'Выйти', exact: true }).click();
   await visible(admin.getByRole('heading', { name: 'Управление хранилищем' }));
   await admin.screenshot({ path: join(screenshots, 'login-desktop.png'), fullPage: true });
   await login(admin, adminURL, 'admin');
@@ -404,6 +461,11 @@ try {
   observe(guest);
   assert.equal((await guest.goto(folderURL)).status(), 401);
   assert.equal((await anonymous.request.get(folderURL + '/archive')).status(), 401);
+  await visible(guest.getByRole('heading', { name: 'Link password', exact: true }));
+  assert.equal(await guest.locator('html').getAttribute('lang'), 'en');
+  await guest.getByRole('link', { name: 'Русский', exact: true }).click();
+  await guest.reload();
+  assert.equal(await guest.locator('html').getAttribute('lang'), 'ru');
   await guest.getByLabel('Пароль', { exact: true }).fill(password);
   const unlockResponse = guest.waitForResponse(
     (response) => response.url() === folderURL + '/unlock',
@@ -416,6 +478,10 @@ try {
     `Unlock failed with Origin=${unlocked.request().headers().origin}`,
   );
   await visible(guest.getByRole('heading', { name: 'В этой папке пока нет файлов' }));
+  await guest.getByRole('link', { name: 'English', exact: true }).click();
+  await visible(guest.getByRole('heading', { name: 'This folder is empty' }));
+  assert.equal(await guest.getByRole('heading', { name: 'Для друзей', exact: true }).count(), 1);
+  await guest.getByRole('link', { name: 'Русский', exact: true }).click();
   await downloadArchive(guest, 'Для друзей.zip', { 'Для друзей/': '' });
   const session = await (await userContext.request.get(publicURL + '/api/v1/me')).json();
   const mutationHeaders = { 'X-CSRF-Token': session.csrf_token };

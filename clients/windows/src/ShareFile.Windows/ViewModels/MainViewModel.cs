@@ -12,20 +12,20 @@ public sealed record UploadRow(UploadJob Job, double Rate = 0)
 {
     public string Name => Job.Name;
     public double Progress => Job.Size == 0 ? (Job.Status == UploadStatus.Done ? 100 : 0) : 100.0 * Job.Offset / Job.Size;
-    public string Bytes => $"{Job.Offset / 1048576.0:F1} / {Job.Size / 1048576.0:F1} MiB";
-    public string Message => Job.Message;
+    public string Bytes => TransferSummary.Bytes(Job.Offset) + " / " + TransferSummary.Bytes(Job.Size);
+    public string Message => Localization.Text(Job.Message);
     public string TransferDetails => Job.Status == UploadStatus.Uploading && Job.Offset < Job.Size ? TransferSummary.Details(Rate, Rate > 0 ? (Job.Size - Job.Offset) / Rate : null) : "—";
     public string Status => Job.Status switch
     {
-        UploadStatus.Queued => "В очереди",
-        UploadStatus.Uploading => "Загружается",
-        UploadStatus.Paused => "На паузе",
-        UploadStatus.Uploaded => "Загрузка завершена",
-        UploadStatus.Sharing => "Создаётся ссылка",
-        UploadStatus.Done => "Готово",
-        UploadStatus.Uncertain => "Проверьте ссылки в Web UI",
-        UploadStatus.Cancelling => "Отменяется",
-        _ => "Нужна ваша помощь"
+        UploadStatus.Queued => Localization.Text("В очереди"),
+        UploadStatus.Uploading => Localization.Text("Загружается"),
+        UploadStatus.Paused => Localization.Text("На паузе"),
+        UploadStatus.Uploaded => Localization.Text("Загрузка завершена"),
+        UploadStatus.Sharing => Localization.Text("Создаётся ссылка"),
+        UploadStatus.Done => Localization.Text("Готово"),
+        UploadStatus.Uncertain => Localization.Text("Проверьте ссылки в Web UI"),
+        UploadStatus.Cancelling => Localization.Text("Отменяется"),
+        _ => Localization.Text("Нужна ваша помощь")
     };
 }
 
@@ -39,8 +39,27 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly Stack<Node> _trail = [];
     private readonly System.Windows.Threading.DispatcherTimer _progressTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     [ObservableProperty] private double _totalProgress;
-    [ObservableProperty] private string _totalLabel = "Общий прогресс";
+    [ObservableProperty] private string _totalLabel = Localization.Text("Общий прогресс");
     [ObservableProperty] private string _totalDetail = "";
+    public event Action? LanguageChanged;
+    public string SelectedLanguage
+    {
+        get => _queue.State.Settings.Language;
+        set { if (value != SelectedLanguage) _ = ChangeLanguageAsync(value); }
+    }
+    public async Task ChangeLanguageAsync(string value)
+    {
+        try
+        {
+            await _queue.SetLanguageAsync(value);
+            Localization.Language = _queue.State.Settings.Language;
+            Notice = Localization.Text(Notice);
+            LanguageChanged?.Invoke();
+            Refresh(_queue.State);
+        }
+        catch (Exception error) { Notice = UploadQueue.SafeMessage(error); }
+        OnPropertyChanged(nameof(SelectedLanguage));
+    }
     public Action? ShowRequested { get; set; }
     public ObservableCollection<UploadRow> Jobs { get; } = [];
     public IReadOnlyList<SentLink> HistoryEntries => _queue.History?.ForAccount(_queue.State.Settings.Origin, _queue.State.Settings.Owner) ?? [];
@@ -59,7 +78,7 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private Node? _selectedFolder;
     [ObservableProperty] private string _serverInput = "https://192.168.1.1:8081";
     [ObservableProperty] private string _notice = "";
-    [ObservableProperty] private string _username = "Не подключено";
+    [ObservableProperty] private string _username = Localization.Text("Не подключено");
     [ObservableProperty] private string _folderName = "Uploads";
     [ObservableProperty] private int _days = 7;
     [ObservableProperty] private bool _never;
@@ -99,13 +118,13 @@ public sealed partial class MainViewModel : ObservableObject
         });
         _queue.BatchFailed += batch => Application.Current.Dispatcher.BeginInvoke(() =>
         {
-            Notice = $"Не удалось завершить объектов: {batch.FailedCount} из {batch.TotalCount}. Откройте очередь и проверьте состояние";
+            Notice = Localization.Text("Не удалось завершить объектов: {0} из {1}. Откройте очередь и проверьте состояние", batch.FailedCount, batch.TotalCount);
             _desktop.NotifyFailure(Notice, batch.Notify);
         });
         _queue.Completed += batch => Application.Current.Dispatcher.BeginInvoke(async () =>
         {
             var copied = await _desktop.CopyAsync(string.Join(Environment.NewLine, batch.Links));
-            Notice = copied ? $"Загружено объектов: {batch.Names.Count}. Ссылки скопированы" : "Загрузка завершена. Буфер обмена недоступен — нажмите «Скопировать ссылку»";
+            Notice = copied ? Localization.Text("Загружено объектов: {0}. Ссылки скопированы", batch.Names.Count) : Localization.Text("Загрузка завершена. Буфер обмена недоступен — нажмите «Скопировать ссылку»");
             _desktop.Notify(batch, copied);
         });
     }
@@ -114,6 +133,8 @@ public sealed partial class MainViewModel : ObservableObject
     {
         await _queue.LoadAsync();
         var state = _queue.State;
+        LanguageChanged?.Invoke();
+        OnPropertyChanged(nameof(SelectedLanguage));
         Refresh(state);
         if (state.Settings.Origin.Length == 0) return;
         ServerInput = state.Settings.Origin;
@@ -142,10 +163,10 @@ public sealed partial class MainViewModel : ObservableObject
         }
         var summary = TransferSummary.Create(TransferSummary.Selection(state.Jobs), Jobs.Sum(j => j.Rate));
         TotalProgress = summary.Percent;
-        TotalLabel = $"Общий прогресс · {summary.Percent:F0}% · Готово {summary.Completed} из {summary.Count}";
-        TotalDetail = summary.Count == 0 ? "Очередь пока пуста" : $"{TransferSummary.Bytes(summary.Offset)} из {TransferSummary.Bytes(summary.Size)} · {summary.Detail}";
+        TotalLabel = Localization.Text("Общий прогресс · {0:F0}% · Готово {1} из {2}", summary.Percent, summary.Completed, summary.Count);
+        TotalDetail = summary.Count == 0 ? Localization.Text("Очередь пока пуста") : Localization.Text("{0} из {1} · {2}", TransferSummary.Bytes(summary.Offset), TransferSummary.Bytes(summary.Size), summary.Detail);
         SelectedJob = Jobs.FirstOrDefault(j => j.Job.Id == selected);
-        Username = _queue.Connected ? state.Settings.Username : "Не подключено";
+        Username = _queue.Connected ? state.Settings.Username : Localization.Text("Не подключено");
         FolderName = state.Settings.FolderName;
         RefreshHistory();
         // Editable settings are initialized once; progress updates must not overwrite unsaved input.
@@ -161,7 +182,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_queue.History is null) return;
         var link = await _queue.History.GetLinkAsync(entry);
-        Notice = await _desktop.CopyAsync(link) ? "Ссылка скопирована" : "Буфер обмена недоступен. Попробуйте снова";
+        Notice = await _desktop.CopyAsync(link) ? Localization.Text("Ссылка скопирована") : Localization.Text("Буфер обмена недоступен. Попробуйте снова");
     });
     public Task OpenHistoryEntryAsync(SentLink entry) => GuardAsync(async () =>
     {
@@ -170,7 +191,7 @@ public sealed partial class MainViewModel : ObservableObject
     public Task RevokeHistoryEntryAsync(SentLink entry) => GuardAsync(async () =>
     {
         await _queue.RevokeHistoryAsync(entry);
-        Notice = "Ссылка отозвана";
+        Notice = Localization.Text("Ссылка отозвана");
     });
     [RelayCommand(CanExecute = nameof(CanReadHistory))]
     private async Task CopyHistoryAsync() { if (SelectedHistory is { } entry) await CopyHistoryEntryAsync(entry); }
@@ -189,18 +210,18 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand(IncludeCancelCommand = true, CanExecute = nameof(CanConnect))]
     private async Task ConnectAsync(CancellationToken ct)
     {
-        if (IsConnected) { Notice = "Сначала отключите текущее подключение"; return; }
+        if (IsConnected) { Notice = Localization.Text("Сначала отключите текущее подключение"); return; }
         try
         {
             var origin = Protocol.NormalizeOrigin(ServerInput);
             if (_queue.State.Jobs.Count != 0 && origin != _queue.State.Settings.Origin)
-                throw new ClientException("Очередь связана с текущим сервером. Завершите или отмените её перед сменой адреса");
+                throw new ClientException(Localization.Text("Очередь связана с текущим сервером. Завершите или отмените её перед сменой адреса"));
             using var anonymous = new ShareFileApi(origin);
             var name = "Windows · " + Environment.MachineName;
             var pairing = await anonymous.StartPairingAsync(name[..Math.Min(name.Length, 80)], ct);
             PairingUrl = pairing.VerificationUrl;
             DesktopIntegration.OpenBrowser(PairingUrl);
-            Notice = "Подтвердите подключение в браузере";
+            Notice = Localization.Text("Подтвердите подключение в браузере");
             var expires = DateTimeOffset.FromUnixTimeSeconds(pairing.Request.ExpiresAt);
             while (DateTimeOffset.UtcNow < expires)
             {
@@ -217,11 +238,11 @@ public sealed partial class MainViewModel : ObservableObject
                 catch { await _queue.DetachAsync(CancellationToken.None); api.Dispose(); throw; }
                 _api?.Dispose(); _api = api;
                 IsConnected = true; ServerInput = origin; SelectedTab = 0;
-                Notice = "Компьютер подключён. Можно загружать файлы и папки";
+                Notice = Localization.Text("Компьютер подключён. Можно загружать файлы и папки");
                 await FlushPendingAsync();
                 return;
             }
-            throw new ClientException("Время подтверждения истекло. Подключитесь заново");
+            throw new ClientException(Localization.Text("Время подтверждения истекло. Подключитесь заново"));
         }
         catch (Exception error) { Notice = UploadQueue.SafeMessage(error); }
         finally { PairingUrl = ""; }
@@ -237,7 +258,7 @@ public sealed partial class MainViewModel : ObservableObject
         IsConnected = false;
         _api?.Dispose(); _api = null;
         await Task.Run(() => _credentials.Delete(TokenAccount(_queue.State.Settings.Origin)));
-        Notice = "Локальное подключение удалено. Отозвать устройство можно в Web UI";
+        Notice = Localization.Text("Локальное подключение удалено. Отозвать устройство можно в Web UI");
     });
 
     [RelayCommand]
@@ -252,8 +273,8 @@ public sealed partial class MainViewModel : ObservableObject
         };
         var password = LinkPassword;
         if (Days is < 1 or > 365 || (password.Length != 0 && System.Text.Encoding.UTF8.GetByteCount(password) is < 12 or > 256))
-            throw new ClientException("Срок ссылки: 1–365 дней; пароль: 12–256 байт UTF-8");
-        if (settings.Origin.Length == 0 && password.Length != 0) throw new ClientException("Сначала подключите сервер");
+            throw new ClientException(Localization.Text("Срок ссылки: 1–365 дней; пароль: 12–256 байт UTF-8"));
+        if (settings.Origin.Length == 0 && password.Length != 0) throw new ClientException(Localization.Text("Сначала подключите сервер"));
         if (settings.Origin.Length != 0)
             await Task.Run(() =>
             {
@@ -261,20 +282,20 @@ public sealed partial class MainViewModel : ObservableObject
                 else _credentials.Write(PasswordAccount(settings.Origin), password);
             });
         await _queue.ConfigureAsync(settings, password);
-        Notice = "Настройки сохранены";
+        Notice = Localization.Text("Настройки сохранены");
     });
 
     [RelayCommand]
     private async Task ChooseFilesAsync()
     {
-        var dialog = new OpenFileDialog { Multiselect = true, CheckFileExists = true, Title = "Загрузить и поделиться" };
+        var dialog = new OpenFileDialog { Multiselect = true, CheckFileExists = true, Title = Localization.Text("Загрузить и поделиться") };
         if (dialog.ShowDialog() == true) await AcceptFilesAsync(dialog.FileNames, false);
     }
 
     [RelayCommand]
     private async Task ChooseDirectoryAsync()
     {
-        var dialog = new OpenFolderDialog { Multiselect = true, Title = "Загрузить папку целиком" };
+        var dialog = new OpenFolderDialog { Multiselect = true, Title = Localization.Text("Загрузить папку целиком") };
         if (dialog.ShowDialog() == true) await AcceptFilesAsync(dialog.FolderNames, false);
     }
 
@@ -284,8 +305,8 @@ public sealed partial class MainViewModel : ObservableObject
         string? path = null;
         try
         {
-            if (!IsConnected) { SelectedTab = 1; ShowRequested?.Invoke(); throw new ClientException("Сначала подключите хранилище"); }
-            if (_clipboardImages is null) throw new ClientException("Не удалось открыть каталог изображений");
+            if (!IsConnected) { SelectedTab = 1; ShowRequested?.Invoke(); throw new ClientException(Localization.Text("Сначала подключите хранилище")); }
+            if (_clipboardImages is null) throw new ClientException(Localization.Text("Не удалось открыть каталог изображений"));
             path = await _clipboardImages.WriteAsync(await ClipboardUpload.ReadPngAsync());
             _pendingImages.Add(path);
             await _queue.AddAsync([path]);
@@ -307,9 +328,9 @@ public sealed partial class MainViewModel : ObservableObject
         var files = paths.ToArray();
         if (!IsConnected)
         {
-            if (_pending.Count + files.Length > 100) { Notice = "Слишком много объектов: максимум 100"; ShowRequested?.Invoke(); return; }
+            if (_pending.Count + files.Length > 100) { Notice = Localization.Text("Слишком много объектов: максимум 100"); ShowRequested?.Invoke(); return; }
             _pending.AddRange(files); SelectedTab = 1;
-            Notice = "Подключите хранилище. Выбранные файлы и папки добавятся после подтверждения";
+            Notice = Localization.Text("Подключите хранилище. Выбранные файлы и папки добавятся после подтверждения");
             ShowRequested?.Invoke(); return;
         }
         if (!explorer || !_queue.State.Settings.SilentExplorerUploads) ShowRequested?.Invoke();
@@ -330,8 +351,8 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (SelectedJob is not { } row) return;
         if (row.Job.Status == UploadStatus.Uncertain && MessageBox.Show(
-            "Сервер мог создать предыдущую ссылку. Проверьте ссылки объекта в Web UI и отзовите неизвестные. Создать новую ссылку?",
-            "Новая публичная ссылка", MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes) return;
+            Localization.Text("Сервер мог создать предыдущую ссылку. Проверьте ссылки объекта в Web UI и отзовите неизвестные. Создать новую ссылку?"),
+            Localization.Text("Новая публичная ссылка"), MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes) return;
         await GuardAsync(async () => { await _queue.NewLinkAsync(row.Job.Id); await CopyLinkAsync(); });
     }
     [RelayCommand(CanExecute = nameof(CanCopyLink))]
@@ -342,16 +363,16 @@ public sealed partial class MainViewModel : ObservableObject
         {
             var saved = HistoryEntries.FirstOrDefault(e => e.ShareId == job?.ShareId && e.Active);
             if (saved is not null) { await CopyHistoryEntryAsync(saved); return; }
-            Notice = "Откройте историю ссылок. Если ссылка там отсутствует, создайте новую";
+            Notice = Localization.Text("Откройте историю ссылок. Если ссылка там отсутствует, создайте новую");
             return;
         }
-        Notice = await _desktop.CopyAsync(link) ? "Ссылка скопирована" : "Буфер обмена недоступен. Попробуйте снова";
+        Notice = await _desktop.CopyAsync(link) ? Localization.Text("Ссылка скопирована") : Localization.Text("Буфер обмена недоступен. Попробуйте снова");
     }
     [RelayCommand(CanExecute = nameof(CanRevokeLink))]
     private async Task RevokeLinkAsync()
     {
         if (SelectedJob is not { } row || _api is null || row.Job.ShareId.Length == 0) return;
-        await GuardAsync(async () => { await _queue.RevokeLinkAsync(row.Job.Id); Notice = "Ссылка отозвана. Для доступа создайте новую"; });
+        await GuardAsync(async () => { await _queue.RevokeLinkAsync(row.Job.Id); Notice = Localization.Text("Ссылка отозвана. Для доступа создайте новую"); });
     }
     [RelayCommand]
     private void OpenWeb()
@@ -362,7 +383,7 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task BrowseFoldersAsync() => await GuardAsync(async () =>
     {
-        if (_api is null) throw new ClientException("Подключите хранилище");
+        if (_api is null) throw new ClientException(Localization.Text("Подключите хранилище"));
         _trail.Clear(); Folders.Clear();
         foreach (var node in await _api.FoldersAsync("", CancellationToken.None)) Folders.Add(node);
     });
@@ -385,9 +406,9 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task SelectFolderAsync() => await GuardAsync(async () =>
     {
         var folder = SelectedFolder ?? (_trail.TryPeek(out var current) ? current : null);
-        if (folder is null || folder.Role < 3) throw new ClientException("Выберите папку с правами управляющего");
+        if (folder is null || folder.Role < 3) throw new ClientException(Localization.Text("Выберите папку с правами управляющего"));
         await _queue.ConfigureAsync(_queue.State.Settings with { Folder = folder.Id, FolderName = folder.Name }, LinkPassword);
-        Notice = "Папка назначения: " + folder.Name;
+        Notice = Localization.Text("Папка назначения: ") + folder.Name;
     });
 
     public async Task GuardAsync(Func<Task> action)

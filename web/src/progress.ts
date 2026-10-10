@@ -1,3 +1,4 @@
+import { t } from './i18n';
 import { bytes } from './utils';
 
 // Only confirmed bytes from the current run enter the rate; recovered HEAD offsets do not.
@@ -50,14 +51,20 @@ export function progressSummary(jobs: ProgressJob[], rate: number) {
 
 export function remainingTime(seconds: number) {
   const rounded = Math.max(1, Math.ceil(seconds));
-  if (rounded < 60) return `${rounded} с`;
-  if (rounded < 3600) return `${Math.ceil(rounded / 60)} мин`;
+  if (rounded < 60) return t('{0} с', [rounded]);
+  if (rounded < 3600) return t('{0} мин', [Math.ceil(rounded / 60)]);
   const minutes = Math.ceil(rounded / 60);
-  return `${Math.floor(minutes / 60)} ч${minutes % 60 ? ` ${minutes % 60} мин` : ''}`;
+  return t('{0} ч{1}', [
+    Math.floor(minutes / 60),
+    minutes % 60 ? t(' {0} мин', [minutes % 60]) : '',
+  ]);
 }
 
 export function transferDetails(rate: number, seconds: number | null) {
   return rate > 0
-    ? `${bytes(rate)}/с · ${seconds === null ? 'Оставшееся время —' : `Осталось ≈ ${remainingTime(seconds)}`}`
-    : 'Скорость — · Оцениваем оставшееся время…';
+    ? t('{0}/с · {1}', [
+        bytes(rate),
+        seconds === null ? t('Оставшееся время —') : t('Осталось ≈ {0}', [remainingTime(seconds)]),
+      ])
+    : t('Скорость — · Оцениваем оставшееся время…');
 }

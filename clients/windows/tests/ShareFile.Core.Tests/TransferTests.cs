@@ -221,7 +221,7 @@ internal sealed class FakeApi : IShareFileApi
         IdempotencyKeys.Add(job.Id);
         if (CreateError != 0) throw new ApiException(CreateError);
         if (_created.Add(job.Id)) { CreatedObjects++; Size = job.Size; Offset = 0; Bytes.SetLength(0); }
-        if (LoseCreate) { LoseCreate = false; throw new ClientException("Не удалось получить ответ"); }
+        if (LoseCreate) { LoseCreate = false; throw new ClientException("Не удалось получить ответ", retryable: true); }
         return Task.FromResult(job with { Upload = Upload, FileId = FileId });
     }
     public Task<UploadHead> HeadAsync(string path, CancellationToken ct) => Task.FromResult(new UploadHead(Offset, Size, 1024, FileId, Offset == Size ? "complete" : "open"));
@@ -231,13 +231,13 @@ internal sealed class FakeApi : IShareFileApi
         if (offset != Offset) throw new ApiException(409);
         var bytes = new byte[LosePatch ? 127 : count]; await source.ReadExactlyAsync(bytes, ct);
         if (RecordBytes) await Bytes.WriteAsync(bytes, ct); Offset += bytes.Length;
-        if (LosePatch) { LosePatch = false; throw new ClientException("Не удалось получить ответ"); }
+        if (LosePatch) { LosePatch = false; throw new ClientException("Не удалось получить ответ", retryable: true); }
     }
     public Task CancelUploadAsync(string path, CancellationToken ct) => CancelError ? throw new ApiException(403) : Task.CompletedTask;
     public Task<ShareLink> ShareAsync(string fileId, ShareOptions options, CancellationToken ct)
     {
         ShareCalls++;
-        if (LoseShare) throw new ClientException("Не удалось получить ответ");
+        if (LoseShare) throw new ClientException("Не удалось получить ответ", retryable: true);
         return Task.FromResult(new ShareLink(Origin + "/s/" + UploadEngine.NewId(), new ShareIdentity(UploadEngine.NewId())));
     }
     public Task RevokeShareAsync(string id, CancellationToken ct) => RevokeError ? throw new ApiException(403) : Task.CompletedTask;

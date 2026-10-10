@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react';
 import { UploadManager } from '../uploads';
 import { bytes } from '../utils';
@@ -31,16 +32,16 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
   const rate = selection.reduce((sum, job) => sum + manager.rate(job.id), 0);
   const summary = progressSummary(selection, rate);
   const status = selection.every((job) => job.status === 'complete')
-    ? 'Загрузка завершена'
+    ? t('Загрузка завершена')
     : selection.some((job) => ['error', 'reselect', 'uncertain'].includes(job.status))
-      ? 'Требуется действие · Оставшееся время —'
+      ? t('Требуется действие · Оставшееся время —')
       : selection.some((job) => job.status === 'paused')
-        ? 'Приостановлено · Оставшееся время —'
+        ? t('Приостановлено · Оставшееся время —')
         : summary.offset === summary.size
-          ? 'Данные переданы · Завершаем загрузку…'
+          ? t('Данные переданы · Завершаем загрузку…')
           : uploading
             ? transferDetails(rate, summary.seconds)
-            : 'В очереди · Оставшееся время —';
+            : t('В очереди · Оставшееся время —');
   async function action(work: () => Promise<void>) {
     setError('');
     try {
@@ -51,22 +52,27 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
   }
   if (!jobs.length) return null;
   return (
-    <aside className={`upload-panel ${expanded ? 'expanded' : ''}`} aria-label="Очередь загрузок">
+    <aside
+      className={`upload-panel ${expanded ? 'expanded' : ''}`}
+      aria-label={t('Очередь загрузок')}
+    >
       <button className="upload-panel-heading" onClick={onToggle} aria-expanded={expanded}>
         <span>
           <Icon name="upload" />
-          <strong>Загрузки</strong>
+          <strong>{t('Загрузки')}</strong>
           <span className="count">{active || jobs.length}</span>
         </span>
         <Icon name={expanded ? 'close' : 'chevron'} />
       </button>
-      <div className="upload-panel-summary" aria-label="Общий прогресс подборки">
-        <strong>Общий прогресс · {summary.percent}%</strong>
+      <div className="upload-panel-summary" aria-label={t('Общий прогресс подборки')}>
+        <strong>
+          {t('Общий прогресс ·')} {summary.percent}%
+        </strong>
         <span>
-          {bytes(summary.offset)} из {bytes(summary.size)} · Готово {summary.completed} из{' '}
-          {selection.length}
+          {bytes(summary.offset)} {t('из')} {bytes(summary.size)} {t('· Готово')}{' '}
+          {summary.completed} {t('из')} {selection.length}
         </span>
-        <progress value={summary.percent} max={100} aria-label="Общий прогресс загрузки" />
+        <progress value={summary.percent} max={100} aria-label={t('Общий прогресс загрузки')} />
         <span>{status}</span>
       </div>
       {expanded && (
@@ -81,13 +87,13 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
                 <div>
                   <strong title={job.name}>{job.name}</strong>
                   <small>
-                    {job.folderName} · {bytes(job.offset)} из {bytes(job.size)}
+                    {job.folderName} · {bytes(job.offset)} {t('из')} {bytes(job.size)}
                   </small>
                 </div>
                 {['queued', 'uploading'].includes(job.status) ? (
                   <IconButton
                     icon="pause"
-                    label={`Приостановить ${job.name}`}
+                    label={t('Приостановить {0}', [job.name])}
                     onClick={() => manager.pause(job.id)}
                   />
                 ) : ['paused', 'error'].includes(job.status) ||
@@ -95,7 +101,7 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
                     job.directory?.files.every((entry) => entry.job.status === 'complete')) ? (
                   <IconButton
                     icon="play"
-                    label={`Продолжить ${job.name}`}
+                    label={t('Продолжить {0}', [job.name])}
                     onClick={() => manager.resume(job.id)}
                   />
                 ) : null}
@@ -104,8 +110,8 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
                     icon="close"
                     label={
                       job.status === 'complete'
-                        ? `Убрать ${job.name} из списка`
-                        : `Отменить ${job.name}`
+                        ? t('Убрать {0} из списка', [job.name])
+                        : t('Отменить {0}', [job.name])
                     }
                     onClick={() => void action(() => manager.remove(job.id))}
                   />
@@ -114,26 +120,26 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
               <progress
                 value={job.status === 'complete' ? Math.max(1, job.size) : job.offset}
                 max={Math.max(1, job.size)}
-                aria-label={`Прогресс ${job.name}`}
+                aria-label={t('Прогресс {0}', [job.name])}
               />
               <small className={job.error ? 'text-danger' : 'muted'}>
                 {job.status === 'complete'
                   ? job.directory
-                    ? 'Папка загружена · Ссылка на 7 дней'
-                    : 'Сохранён в хранилище'
+                    ? t('Папка загружена · Ссылка на 7 дней')
+                    : t('Сохранён в хранилище')
                   : job.status === 'uploading'
-                    ? 'Загружается…'
+                    ? t('Загружается…')
                     : job.status === 'sharing'
-                      ? 'Создаётся ссылка на папку…'
+                      ? t('Создаётся ссылка на папку…')
                       : job.status === 'queued'
-                        ? 'В очереди'
+                        ? t('В очереди')
                         : job.status === 'reselect'
                           ? job.directory
-                            ? 'Выберите исходную папку, чтобы продолжить'
-                            : 'Выберите исходный файл, чтобы продолжить'
+                            ? t('Выберите исходную папку, чтобы продолжить')
+                            : t('Выберите исходный файл, чтобы продолжить')
                           : job.status === 'paused'
-                            ? 'Приостановлено'
-                            : job.error}
+                            ? t('Приостановлено')
+                            : t(job.error ?? '')}
               </small>
               {job.status === 'uploading' && job.offset < job.size && (
                 <small>
@@ -151,7 +157,7 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
                     readOnly
                     value={job.link}
                     onFocus={(e) => e.target.select()}
-                    aria-label={`Ссылка на папку ${job.name}`}
+                    aria-label={t('Ссылка на папку {0}', [job.name])}
                   />
                   <Button
                     icon="link"
@@ -162,23 +168,23 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
                       })
                     }
                   >
-                    {copiedID === job.id ? 'Ссылка скопирована' : 'Скопировать ссылку'}
+                    {copiedID === job.id ? t('Ссылка скопирована') : t('Скопировать ссылку')}
                   </Button>
                 </div>
               )}
               {job.directory && job.fileID && (
                 <a className="uploaded-folder-link" href={`#/files/${job.fileID}`}>
-                  Открыть загруженную папку
+                  {t('Открыть загруженную папку')}
                 </a>
               )}
               {job.directory && job.status === 'reselect' && job.directory.files.length > 0 && (
                 <label className="button">
-                  Выбрать исходную папку
+                  {t('Выбрать исходную папку')}
                   <input
                     type="file"
                     multiple
                     className="visually-hidden"
-                    aria-label={`Продолжить загрузку папки ${job.name}`}
+                    aria-label={t('Продолжить загрузку папки {0}', [job.name])}
                     ref={(node) => {
                       if (node) node.webkitdirectory = true;
                     }}
@@ -194,13 +200,14 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
               )}
               {job.directory && job.status === 'reselect' && (
                 <p className="hint">
-                  Можно перетащить ту же папку в её прежнюю папку назначения. Пустую папку
-                  продолжите кнопкой ▶.
+                  {t(
+                    'Можно перетащить ту же папку в её прежнюю папку назначения. Пустую папку продолжите кнопкой ▶.',
+                  )}
                 </p>
               )}
               {job.status === 'reselect' && !job.directory && (
                 <label className="button secondary reselect">
-                  Выбрать файл
+                  {t('Выбрать файл')}
                   <input
                     type="file"
                     onChange={(e) => {
@@ -212,7 +219,9 @@ export function Uploads({ expanded, onToggle }: { expanded: boolean; onToggle: (
                 </label>
               )}
               {job.status === 'error' && job.error?.includes('не найден') && (
-                <p className="hint">Загрузка могла истечь. Отмените её и загрузите файл заново.</p>
+                <p className="hint">
+                  {t('Загрузка могла истечь. Отмените её и загрузите файл заново.')}
+                </p>
               )}
             </div>
           ))}

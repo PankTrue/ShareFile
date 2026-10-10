@@ -116,7 +116,7 @@ public sealed class HistoryTests : IDisposable
         var job = Assert.Single(queue.State.Jobs);
         Assert.Equal(UploadStatus.Done, job.Status);
         Assert.NotEmpty(job.Link);
-        Assert.Contains("не сохранена", job.Message);
+        Assert.Contains("not saved", job.Message);
         Assert.Equal(1, api.ShareCalls);
         Assert.Empty(history.Entries);
     }

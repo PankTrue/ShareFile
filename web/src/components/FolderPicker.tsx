@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useState } from 'react';
 import { useResource } from '../hooks';
 import { idPath } from '../api';
@@ -19,12 +20,14 @@ export function Pager({
   if (offset === 0 && !hasMore) return null;
   return (
     <div className="pager">
-      <span>Страница {offset / 100 + 1}</span>
+      <span>
+        {t('Страница')} {offset / 100 + 1}
+      </span>
       <Button disabled={offset === 0} onClick={() => onChange(Math.max(0, offset - 100))}>
-        Назад
+        {t('Назад')}
       </Button>
       <Button disabled={!hasMore} onClick={() => onChange(offset + 100)}>
-        Далее
+        {t('Далее')}
       </Button>
     </div>
   );
@@ -57,9 +60,9 @@ export function FolderPicker({
     <div className="folder-picker">
       <div className="picker-heading">
         <Icon name="folder" />
-        <strong>{value ? (folder.value?.name ?? 'Папка') : 'Доступные папки'}</strong>
+        <strong>{value ? (folder.value?.name ?? t('Папка')) : t('Доступные папки')}</strong>
         <Button variant="ghost" onClick={() => go('')}>
-          В начало
+          {t('В начало')}
         </Button>
       </div>
       <State loading={nodes.loading} error={nodes.error || folder.error} retry={nodes.refresh} />
@@ -69,18 +72,20 @@ export function FolderPicker({
             <button type="button" key={node.id} onClick={() => go(node.id)}>
               <Icon name="folder" />
               <span>{node.name}</span>
-              <span className="muted">{(node.effective_role ?? 0) < 2 ? 'Только чтение' : ''}</span>
+              <span className="muted">
+                {(node.effective_role ?? 0) < 2 ? t('Только чтение') : ''}
+              </span>
               <Icon name="chevron" />
             </button>
           ))}
-          {!folders.length && <p className="hint">Вложенных папок на этой странице нет.</p>}
+          {!folders.length && <p className="hint">{t('Вложенных папок на этой странице нет.')}</p>}
         </div>
       )}
       <Pager offset={offset} count={nodes.value?.length ?? 0} onChange={setOffset} />
       <p className="hint">
         {value && (folder.value?.effective_role ?? 0) >= 2
-          ? `Выбрана папка «${folder.value?.name}».`
-          : 'Откройте папку с правом редактирования.'}
+          ? t('Выбрана папка «{0}».', [folder.value?.name ?? ''])
+          : t('Откройте папку с правом редактирования.')}
       </p>
       <input type="hidden" value={value && (folder.value?.effective_role ?? 0) >= 2 ? value : ''} />
     </div>

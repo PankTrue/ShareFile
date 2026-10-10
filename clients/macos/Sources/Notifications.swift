@@ -11,10 +11,10 @@ import UserNotifications
     func requestPermission() async -> Bool {
         do {
             let allowed = try await center.requestAuthorization(options: [.alert])
-            if !allowed { onNotice?("Загрузка и копирование работают. Для уведомлений разрешите ShareFile в System Settings → Notifications") }
+            if !allowed { onNotice?(L("Загрузка и копирование работают. Для уведомлений разрешите ShareFile в System Settings → Notifications")) }
             return allowed
         } catch {
-            onNotice?("Не удалось включить уведомления: " + error.localizedDescription)
+            onNotice?(L("Не удалось включить уведомления: ") + error.localizedDescription)
             return false
         }
     }
@@ -23,7 +23,7 @@ import UserNotifications
         await send(title: completion.title, body: completion.body)
     }
     func sendFailure(_ message: String) async {
-        await send(title: "Не удалось загрузить изображение", body: message)
+        await send(title: L("Не удалось загрузить изображение"), body: message)
     }
     private func send(title: String, body: String) async {
         guard isEnabled(), await requestPermission(), isEnabled() else { return }
@@ -33,7 +33,7 @@ import UserNotifications
         // Public links and device tokens never enter Notification Center's persisted payload.
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         do { try await center.add(request) }
-        catch { onNotice?("Файлы загружены, но уведомление не доставлено: " + error.localizedDescription) }
+        catch { onNotice?(L("Файлы загружены, но уведомление не доставлено: ") + error.localizedDescription) }
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {

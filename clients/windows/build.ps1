@@ -10,6 +10,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Publishing $rid failed" }
         Copy-Item installer/* $output
         Copy-Item ../../docs/windows.md "$output/README.md"
+        Copy-Item ../../docs/desktop-localization.md "$output/desktop-localization.md"
         Copy-Item ../../LICENSE "$output/LICENSE.txt"
         $packagesLine = & dotnet nuget locals global-packages --list --force-english-output
         if ($LASTEXITCODE -ne 0) { throw 'Cannot locate dependency licenses' }

@@ -19,19 +19,19 @@ public sealed class JsonStateStore(string path) : IStateStore
     public async Task<ClientState> LoadAsync(CancellationToken ct = default)
     {
         if (!File.Exists(path)) return new ClientState();
-        if (new FileInfo(path).Length > 64 * 1024 * 1024) throw new ClientException("Файл очереди слишком большой");
+        if (new FileInfo(path).Length > 64 * 1024 * 1024) throw new ClientException(Localization.Text("Файл очереди слишком большой"));
         await using var file = File.OpenRead(path);
         try
         {
             var state = await JsonSerializer.DeserializeAsync<ClientState>(file, Json, ct).ConfigureAwait(false);
             if (state is null || state.Version != 1 || state.Settings is null || state.Jobs is null || state.Jobs.Count > 100)
-                throw new ClientException("Неизвестный формат очереди. Сохраните state.json перед восстановлением");
+                throw new ClientException(Localization.Text("Неизвестный формат очереди. Сохраните state.json перед восстановлением"));
             foreach (var job in state.Jobs) UploadEngine.Validate(job);
             if (state.Jobs.Select(j => j.Id).Distinct().Count() != state.Jobs.Count)
-                throw new ClientException("Повторяющиеся записи в очереди");
-            return state;
+                throw new ClientException(Localization.Text("Повторяющиеся записи в очереди"));
+            return state with { Settings = state.Settings with { Language = Localization.Normalize(state.Settings.Language) } };
         }
-        catch (JsonException) { throw new ClientException("Не удалось прочитать очередь. Сохраните state.json перед восстановлением"); }
+        catch (JsonException) { throw new ClientException(Localization.Text("Не удалось прочитать очередь. Сохраните state.json перед восстановлением")); }
     }
 
     public async Task SaveAsync(ClientState state, CancellationToken ct = default)
@@ -45,7 +45,7 @@ public sealed class JsonStateStore(string path) : IStateStore
                 16384, FileOptions.Asynchronous | FileOptions.WriteThrough))
             {
                 await JsonSerializer.SerializeAsync(file, state, Json, ct).ConfigureAwait(false);
-                if (file.Length > 64 * 1024 * 1024) throw new ClientException("Очередь слишком большая. Удалите завершённые записи");
+                if (file.Length > 64 * 1024 * 1024) throw new ClientException(Localization.Text("Очередь слишком большая. Удалите завершённые записи"));
                 await file.FlushAsync(ct).ConfigureAwait(false);
                 file.Flush(flushToDisk: true);
             }

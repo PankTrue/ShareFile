@@ -87,7 +87,7 @@ func (a *App) downloadSelection(w http.ResponseWriter, r *http.Request, u identi
 		}
 		names[i], used[name] = name, true
 	}
-	a.serveZIP(w, r, "Выбранные файлы.zip", func(z *zip.Writer, flush func() error) error {
+	a.serveZIP(w, r, shareText(preferredLanguage(r), "Выбранные файлы.zip"), func(z *zip.Writer, flush func() error) error {
 		buffer := make([]byte, 32*1024)
 		for i, root := range nodes {
 			resolve := func(id string) (metadata.Node, error) {

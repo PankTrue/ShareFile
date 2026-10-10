@@ -27,7 +27,9 @@ def main():
             (package / entry).chmod(0o755)
         shutil.copytree(ROOT / "sharefile_linux", package / "sharefile_linux", ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copytree(ROOT / "resources", package / "resources")
+        shutil.copy2(ROOT.parent / "localization/en.json", package / "sharefile_linux/en.json")
         shutil.copy2(ROOT.parents[1] / "docs/linux.md", package / "README.md")
+        shutil.copy2(ROOT.parents[1] / "docs/desktop-localization.md", package / "desktop-localization.md")
         archive = output / (name + ".tar.gz")
         with tarfile.open(archive, "w:gz") as file:
             file.add(package, arcname=name)

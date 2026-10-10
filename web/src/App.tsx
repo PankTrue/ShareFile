@@ -1,3 +1,6 @@
+import { t, useLanguage } from './i18n';
+import type { Message } from './i18n';
+import { LanguageSwitch } from './components/LanguageSwitch';
 import { useCallback, useEffect, useState } from 'react';
 import { api, APIError, errorMessage, setCSRF } from './api';
 import type { Session, UIInfo } from './types';
@@ -13,12 +16,13 @@ import { Devices, SharesPage, Trash } from './features/Account';
 import { Groups, SettingsPage, Users } from './features/Admin';
 
 export function App() {
+  useLanguage();
   const [session, setSession] = useState<Session | null>();
   const [info, setInfo] = useState<UIInfo>();
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
-  const [toast, setToast] = useState('');
-  const notify = useCallback((message: string) => setToast(message), []);
+  const [toast, setToast] = useState<Message>('');
+  const notify = useCallback((message: Message) => setToast(message), []);
   const authenticate = useCallback((session: Session) => {
     setCSRF(session.csrf_token);
     setSession(session);
@@ -68,7 +72,7 @@ export function App() {
         <div className="boot-screen">
           <Brand />
           <span className="spinner" />
-          <p>Подключаемся к хранилищу…</p>
+          <p>{t('Подключаемся к хранилищу…')}</p>
         </div>
       ) : session ? (
         <AppContext value={{ session, notify }}>
@@ -92,8 +96,8 @@ export function App() {
       {toast && (
         <div className="toast" role="status">
           <Icon name="check" />
-          <span>{toast}</span>
-          <IconButton icon="close" label="Закрыть уведомление" onClick={() => setToast('')} />
+          <span>{t(toast)}</span>
+          <IconButton icon="close" label={t('Закрыть уведомление')} onClick={() => setToast('')} />
         </div>
       )}
     </>
@@ -134,36 +138,42 @@ function Login({
           <div className="art-orbit orbit-two" />
           <div className="art-file file-one">
             <Icon name="folder" />
-            <span>Ваши файлы</span>
+            <span>{t('Ваши файлы')}</span>
           </div>
           <div className="art-file file-two">
             <Icon name="link" />
-            <span>Простой обмен</span>
+            <span>{t('Простой обмен')}</span>
           </div>
           <div className="art-file file-three">
             <Icon name="shield" />
-            <span>Ваши правила</span>
+            <span>{t('Ваши правила')}</span>
           </div>
           <div className="art-center">
             <Icon name="logo" />
           </div>
         </div>
         <div className="login-art-copy">
-          <div className="eyebrow">ВАШ ДИСК. ВАШЕ ПРОСТРАНСТВО.</div>
+          <div className="eyebrow">{t('ВАШ ДИСК. ВАШЕ ПРОСТРАНСТВО.')}</div>
           <h2>
-            Всё важное —<br />в одном месте.
+            {t('Всё важное —')}
+            <br />
+            {t('в одном месте.')}
           </h2>
           <p>
-            Храните файлы дома. Делитесь ими
-            <br />с теми, кому доверяете.
+            {t('Храните файлы дома. Делитесь ими')}
+            <br />
+            {t('с теми, кому доверяете.')}
           </p>
         </div>
         <div className="login-art-footer">
           <Icon name="lock" />
-          Личное хранилище на вашем устройстве
+          {t('Личное хранилище на вашем устройстве')}
         </div>
       </div>
       <main className="login-main">
+        <div className="login-language">
+          <LanguageSwitch />
+        </div>
         <div className="mobile-brand">
           <Brand />
         </div>
@@ -172,18 +182,18 @@ function Login({
             <Icon name={info?.admin_listener ? 'shield' : 'folder'} />
           </span>
           <div className="eyebrow">
-            {info?.admin_listener ? 'ПРИВАТНЫЙ ДОСТУП' : 'ДОБРО ПОЖАЛОВАТЬ'}
+            {info?.admin_listener ? t('ПРИВАТНЫЙ ДОСТУП') : t('ДОБРО ПОЖАЛОВАТЬ')}
           </div>
-          <h1>{info?.admin_listener ? 'Управление хранилищем' : 'Войти в ShareFile'}</h1>
+          <h1>{info?.admin_listener ? t('Управление хранилищем') : t('Войти в ShareFile')}</h1>
           <p>
             {info?.admin_listener
-              ? 'Войдите с учётной записью администратора.'
-              : 'Используйте учётную запись, созданную администратором.'}
+              ? t('Войдите с учётной записью администратора.')
+              : t('Используйте учётную запись, созданную администратором.')}
           </p>
           <ErrorBox message={error} />
           {error && (
             <Button icon="refresh" onClick={retry}>
-              Проверить подключение
+              {t('Проверить подключение')}
             </Button>
           )}
           <form
@@ -206,44 +216,44 @@ function Login({
             }}
           >
             <label>
-              Имя пользователя
+              {t('Имя пользователя')}
               <input
                 autoFocus
                 autoComplete="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
-                placeholder="Ваш логин"
+                placeholder={t('Ваш логин')}
               />
             </label>
             <label>
-              Пароль
+              {t('Пароль')}
               <input
                 type="password"
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                placeholder="Введите пароль"
+                placeholder={t('Введите пароль')}
               />
             </label>
             <ErrorBox message={task.error} />
             <Button type="submit" variant="primary" disabled={task.busy}>
-              {task.busy ? 'Входим…' : 'Войти в хранилище'}
+              {task.busy ? t('Входим…') : t('Войти в хранилище')}
               <Icon name="chevron" />
             </Button>
           </form>
           <div className="login-help">
             <Icon name="info" />
             <span>
-              Нет доступа или забыли пароль?
+              {t('Нет доступа или забыли пароль?')}
               <br />
-              Обратитесь к администратору хранилища.
+              {t('Обратитесь к администратору хранилища.')}
             </span>
           </div>
         </div>
         <footer>
-          ShareFile <span>Личное пространство для ваших файлов</span>
+          ShareFile <span>{t('Личное пространство для ваших файлов')}</span>
         </footer>
       </main>
     </div>
@@ -351,13 +361,13 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             <Brand />
             <IconButton
               icon="close"
-              label="Закрыть меню"
+              label={t('Закрыть меню')}
               className="mobile-only"
               onClick={() => setMobileMenu(false)}
             />
           </div>
-          <div className="sidebar-label">ХРАНИЛИЩЕ</div>
-          <nav aria-label="Основное меню">
+          <div className="sidebar-label">{t('ХРАНИЛИЩЕ')}</div>
+          <nav aria-label={t('Основное меню')}>
             {navigation
               .filter((item) => !item.admin)
               .map((item) => (
@@ -367,15 +377,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   onClick={() => navigate(item.page)}
                 >
                   <Icon name={item.icon} />
-                  <span>{item.title}</span>
+                  <span>{t(item.title)}</span>
                   {page === item.page && <span className="nav-active-dot" />}
                 </button>
               ))}
           </nav>
           {admin && (
             <>
-              <div className="sidebar-label admin-label">АДМИНИСТРИРОВАНИЕ</div>
-              <nav aria-label="Администрирование">
+              <div className="sidebar-label admin-label">{t('АДМИНИСТРИРОВАНИЕ')}</div>
+              <nav aria-label={t('Администрирование')}>
                 {navigation
                   .filter((item) => item.admin)
                   .map((item) => (
@@ -385,7 +395,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                       onClick={() => navigate(item.page)}
                     >
                       <Icon name={item.icon} />
-                      <span>{item.title}</span>
+                      <span>{t(item.title)}</span>
                     </button>
                   ))}
               </nav>
@@ -395,11 +405,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             <div className="storage-info">
               <span className="status-dot" />
               <div>
-                <strong>Личное хранилище</strong>
+                <strong>{t('Личное хранилище')}</strong>
                 <small>
                   {session.admin_listener
-                    ? 'Доступ в локальной сети / VPN'
-                    : 'Файлы на вашем диске'}
+                    ? t('Доступ в локальной сети / VPN')
+                    : t('Файлы на вашем диске')}
                 </small>
               </div>
             </div>
@@ -407,11 +417,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               <span className="avatar">{session.user.username.slice(0, 2).toUpperCase()}</span>
               <div>
                 <strong>{session.user.username}</strong>
-                <small>{session.user.admin ? 'Администратор' : 'Пользователь'}</small>
+                <small>{session.user.admin ? t('Администратор') : t('Пользователь')}</small>
               </div>
               <IconButton
                 icon="logout"
-                label="Выйти"
+                label={t('Выйти')}
                 disabled={task.busy}
                 onClick={() =>
                   void task.run(async () => {
@@ -427,7 +437,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         {mobileMenu && (
           <button
             className="sidebar-overlay"
-            aria-label="Закрыть меню"
+            aria-label={t('Закрыть меню')}
             onClick={() => setMobileMenu(false)}
           />
         )}
@@ -436,19 +446,20 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             <div>
               <IconButton
                 icon="menu"
-                label="Открыть меню"
+                label={t('Открыть меню')}
                 className="mobile-only"
                 onClick={() => setMobileMenu(true)}
               />
               <span className="topbar-title">
-                {navigation.find((item) => item.page === page)?.title}
+                {t(navigation.find((item) => item.page === page)?.title ?? '')}
               </span>
             </div>
             <div className="topbar-meta">
+              <LanguageSwitch />
               {admin && (
                 <span className="private-badge">
                   <Icon name="shield" />
-                  Приватная админка
+                  {t('Приватная админка')}
                 </span>
               )}
               <span className="topbar-user">
@@ -496,7 +507,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </main>
           <footer className="workspace-footer">
             <span>ShareFile</span>
-            <span>Ваши файлы. Под вашим контролем.</span>
+            <span>{t('Ваши файлы. Под вашим контролем.')}</span>
           </footer>
         </div>
         <Uploads expanded={queue} onToggle={() => setQueue((value) => !value)} />

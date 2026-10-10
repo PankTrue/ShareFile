@@ -102,7 +102,7 @@ func TestFolderArchives(t *testing.T) {
 	}
 	for _, node := range []string{root.ID, nested.ID} {
 		page := request(t, f.a.Public(), "GET", base+"/nodes/"+node, nil, nil)
-		if !strings.Contains(page.Body.String(), "Скачать всё (ZIP)") || !strings.Contains(page.Body.String(), base+"/nodes/"+node+"/archive") {
+		if !strings.Contains(page.Body.String(), "Download all (ZIP)") || !strings.Contains(page.Body.String(), base+"/nodes/"+node+"/archive") {
 			t.Fatal("folder archive action missing")
 		}
 	}

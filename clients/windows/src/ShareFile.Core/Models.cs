@@ -57,6 +57,7 @@ public sealed record ClientSettings
     public bool Never { get; init; }
     public bool SilentExplorerUploads { get; init; } = true;
     public bool NotifyUploads { get; init; } = true;
+    public string Language { get; init; } = "en";
 }
 
 public sealed record ClientState
@@ -66,18 +67,21 @@ public sealed record ClientState
     public IReadOnlyList<UploadJob> Jobs { get; init; } = [];
 }
 
-public sealed class ClientException(string message) : Exception(message);
+public sealed class ClientException(string message, bool retryable = false) : Exception(message)
+{
+    public bool Retryable { get; } = retryable;
+}
 
 public sealed class ApiException(int status, TimeSpan retryAfter = default) : Exception(status switch
 {
-    401 => "Подключение отозвано или истекло. Подключите компьютер заново",
-    403 => "Недостаточно прав для этой операции",
-    404 => "Объект не найден или срок загрузки истёк",
-    409 => "Состояние файла изменилось. Попробуйте продолжить загрузку",
-    429 => "Сервер занят. Повторите операцию позже",
-    503 => "Хранилище сейчас недоступно",
-    507 => "В хранилище недостаточно свободного места",
-    _ => $"Сервер вернул HTTP {status}"
+    401 => Localization.Text("Подключение отозвано или истекло. Подключите компьютер заново"),
+    403 => Localization.Text("Недостаточно прав для этой операции"),
+    404 => Localization.Text("Объект не найден или срок загрузки истёк"),
+    409 => Localization.Text("Состояние файла изменилось. Попробуйте продолжить загрузку"),
+    429 => Localization.Text("Сервер занят. Повторите операцию позже"),
+    503 => Localization.Text("Хранилище сейчас недоступно"),
+    507 => Localization.Text("В хранилище недостаточно свободного места"),
+    _ => Localization.Text("Сервер вернул HTTP {0}", status)
 })
 {
     public int Status { get; } = status;

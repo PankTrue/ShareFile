@@ -2203,3 +2203,41 @@ progress::-moz-progress-bar {
     transition-duration: 0.01ms !important;
   }
 }
+
+.language-switch {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.language-switch select {
+  width: auto;
+  min-width: 105px;
+  margin: 0;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+.login-main {
+  position: relative;
+}
+.login-language {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+}
+@media (max-width: 600px) {
+  .topbar-meta .language-switch > span {
+    display: none;
+  }
+  .topbar-meta .language-switch select {
+    min-width: 95px;
+  }
+  .login-language {
+    top: 16px;
+    right: 16px;
+  }
+}

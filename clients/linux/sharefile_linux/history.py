@@ -1,3 +1,4 @@
+from .localization import tr
 """Bounded metadata index; public capabilities live only in Secret Service."""
 import copy
 import json
@@ -20,7 +21,7 @@ def validate_url(value):
     if (url.scheme not in ("https", "http") or not url.netloc or url.username or url.password
             or url.query or url.fragment or not re.fullmatch(r"/s/[A-Za-z0-9_-]{43}", url.path)
             or (url.scheme == "http" and url.hostname not in ("localhost", "127.0.0.1", "::1"))):
-        raise ClientError("Некорректная ссылка в защищённой истории")
+        raise ClientError(tr("Некорректная ссылка в защищённой истории"))
     return value
 
 
@@ -64,7 +65,7 @@ class HistoryStore:
             self.entries = output
         except (OSError, ValueError, KeyError, TypeError, ClientError):
             self.available = False
-            raise ClientError("Не удалось прочитать history.json. История сохранена для восстановления") from None
+            raise ClientError(tr("Не удалось прочитать history.json. История сохранена для восстановления")) from None
 
     def _save(self, entries):
         directory = self.path.parent
@@ -87,7 +88,7 @@ class HistoryStore:
 
     def add(self, origin, owner, job, link):
         if not self.available:
-            raise ClientError("История недоступна. Ссылка доступна в текущей очереди")
+            raise ClientError(tr("История недоступна. Ссылка доступна в текущей очереди"))
         entry = {"origin": origin, "owner": owner, "share_id": link["share"]["id"],
                  "job_id": job["id"], "name": job["name"], "created": link["share"].get("created_at", int(time.time())),
                  "expires": link["share"].get("expires_at") or (0 if job["never"] else int(time.time()) + job["days"] * 86400),
@@ -120,10 +121,10 @@ class HistoryStore:
 
     def link(self, entry):
         if entry["revoked"] or (entry["expires"] and entry["expires"] <= time.time()):
-            raise ClientError("Ссылка отозвана или срок действия истёк")
+            raise ClientError(tr("Ссылка отозвана или срок действия истёк"))
         value = self.credentials.read(entry["origin"], self.key(entry))
         if not value:
-            raise ClientError("Ссылка недоступна в системном хранилище секретов")
+            raise ClientError(tr("Ссылка недоступна в системном хранилище секретов"))
         return validate_url(value)
 
     def revoked(self, entry):

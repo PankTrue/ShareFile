@@ -16,8 +16,8 @@ public sealed record SentLink(string Origin, string Owner, string ShareId, strin
 {
     public string Account => "history:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Origin + "\n" + Owner + "\n" + ShareId)));
     public bool Active => !Revoked && (Expires is null || Expires > DateTimeOffset.UtcNow);
-    public string Status => Revoked ? "Отозвана" : !Active ? "Срок истёк" : Expires is { } until ? "До " + until.LocalDateTime.ToString("g") : "Бессрочно";
-    public string CreatedLabel => Created.LocalDateTime.ToString("g");
+    public string Status => Revoked ? Localization.Text("Отозвана") : !Active ? Localization.Text("Срок истёк") : Expires is { } until ? Localization.Text("До ") + until.LocalDateTime.ToString("g", Localization.Culture) : Localization.Text("Бессрочно");
+    public string CreatedLabel => Created.LocalDateTime.ToString("g", Localization.Culture);
 }
 
 // Public URLs are written exclusively to the OS secret store, one capability per credential.
@@ -39,25 +39,25 @@ public sealed class LinkHistory(string path, ILinkSecrets secrets)
         try
         {
             if (!File.Exists(path)) return;
-            if (new FileInfo(path).Length > 2 * 1024 * 1024) throw new ClientException("История слишком большая");
+            if (new FileInfo(path).Length > 2 * 1024 * 1024) throw new ClientException(Localization.Text("История слишком большая"));
             await using var file = File.OpenRead(path);
             var entries = await JsonSerializer.DeserializeAsync<SentLink[]>(file, Json, ct).ConfigureAwait(false);
-            if (entries is null || entries.Length > Limit) throw new ClientException("Некорректная история");
+            if (entries is null || entries.Length > Limit) throw new ClientException(Localization.Text("Некорректная история"));
             foreach (var entry in entries)
             {
                 if (entry is null || Protocol.NormalizeOrigin(entry.Origin) != entry.Origin ||
                     !Protocol.IsIdentifier(entry.Owner) || !Protocol.IsIdentifier(entry.ShareId) ||
                     !Protocol.IsIdentifier(entry.JobId) || entry.Name is null || entry.Name.Length > 1024 ||
                     entry.Created <= DateTimeOffset.UnixEpoch || entry.Expires < DateTimeOffset.UnixEpoch)
-                    throw new ClientException("Некорректная история");
+                    throw new ClientException(Localization.Text("Некорректная история"));
             }
-            if (entries.Select(e => e.Account).Distinct().Count() != entries.Length) throw new ClientException("Повторяющиеся записи истории");
+            if (entries.Select(e => e.Account).Distinct().Count() != entries.Length) throw new ClientException(Localization.Text("Повторяющиеся записи истории"));
             _entries = entries;
         }
         catch (Exception error) when (error is JsonException or ClientException or IOException or UnauthorizedAccessException or ArgumentException)
         {
             _available = false;
-            throw new ClientException("Не удалось прочитать history.json. История сохранена для восстановления");
+            throw new ClientException(Localization.Text("Не удалось прочитать history.json. История сохранена для восстановления"));
         }
         finally { _gate.Release(); Changed?.Invoke(); }
     }
@@ -88,7 +88,7 @@ public sealed class LinkHistory(string path, ILinkSecrets secrets)
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (!_available) throw new ClientException("История недоступна");
+            if (!_available) throw new ClientException(Localization.Text("История недоступна"));
             Protocol.ValidateLink(link);
             Protocol.RequireIdentifier(settings.Owner);
             Protocol.RequireIdentifier(job.Id);
@@ -120,9 +120,9 @@ public sealed class LinkHistory(string path, ILinkSecrets secrets)
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (!_entries.Any(e => e.Account == entry.Account && e.Active)) throw new ClientException("Ссылка отозвана или срок действия истёк");
+            if (!_entries.Any(e => e.Account == entry.Account && e.Active)) throw new ClientException(Localization.Text("Ссылка отозвана или срок действия истёк"));
             var value = await Task.Run(() => secrets.Read(entry.Account)).ConfigureAwait(false);
-            if (string.IsNullOrEmpty(value)) throw new ClientException("Ссылка недоступна в Windows Credential Manager");
+            if (string.IsNullOrEmpty(value)) throw new ClientException(Localization.Text("Ссылка недоступна в Windows Credential Manager"));
             Protocol.ValidateLink(new ShareLink(value, new ShareIdentity(entry.ShareId)));
             return value;
         }

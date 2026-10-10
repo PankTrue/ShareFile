@@ -16,9 +16,9 @@ struct SentLink: Codable, Identifiable, Equatable {
     }
     var active: Bool { !revoked && (expires == nil || expires! > Date()) }
     var label: String {
-        if revoked { return "Отозвана" }
-        if let expires { return expires <= Date() ? "Срок истёк" : "До " + expires.formatted(date: .numeric, time: .shortened) }
-        return "Бессрочно"
+        if revoked { return L("Отозвана") }
+        if let expires { return expires <= Date() ? L("Срок истёк") : L("До ") + expires.formatted(Date.FormatStyle(date: .numeric, time: .shortened).locale(Localization.locale)) }
+        return L("Бессрочно")
     }
 }
 
@@ -38,16 +38,16 @@ struct SentLink: Codable, Identifiable, Equatable {
         do {
             if FileManager.default.fileExists(atPath: path.path) {
                 let data = try Data(contentsOf: path)
-                guard data.count <= 2 << 20 else { throw AppFailure(message: "История слишком большая") }
+                guard data.count <= 2 << 20 else { throw AppFailure(message: L("История слишком большая")) }
                 let saved = try JSONDecoder().decode([SentLink].self, from: data)
                 guard saved.count <= 200, Set(saved.map(\.account)).count == saved.count,
                       saved.allSatisfy({ Self.validID($0.shareID) && Self.validID($0.owner) && Self.validID($0.jobID)
                           && Self.validOrigin($0.origin) && $0.name.count <= 1024 && $0.created.timeIntervalSince1970 > 0 }) else {
-                    throw AppFailure(message: "Некорректная история")
+                    throw AppFailure(message: L("Некорректная история"))
                 }
                 entries = saved
             }
-        } catch { available = false; loadError = "Не удалось прочитать history.json. История сохранена для восстановления" }
+        } catch { available = false; loadError = L("Не удалось прочитать history.json. История сохранена для восстановления") }
     }
     static func validID(_ value: String) -> Bool { value.range(of: "\\A[A-Za-z0-9_-]{43}\\z", options: .regularExpression) != nil }
     static func validOrigin(_ value: String) -> Bool {
@@ -60,7 +60,7 @@ struct SentLink: Codable, Identifiable, Equatable {
               url.query == nil, url.fragment == nil,
               url.path.range(of: "\\A/s/[A-Za-z0-9_-]{43}\\z", options: .regularExpression) != nil,
               url.scheme == "https" || (url.scheme == "http" && ["localhost", "127.0.0.1", "[::1]"].contains(host)) else {
-            throw AppFailure(message: "Некорректная ссылка в защищённой истории")
+            throw AppFailure(message: L("Некорректная ссылка в защищённой истории"))
         }
         return url
     }
@@ -78,7 +78,7 @@ struct SentLink: Codable, Identifiable, Equatable {
     }
     func forAccount(_ origin: String, _ owner: String) -> [SentLink] { entries.filter { $0.origin == origin && $0.owner == owner } }
     func record(origin: String, owner: String, job: Upload, url: String, shareID: String, created: Date? = nil, expires: Date? = nil) async throws {
-        guard available, Self.validID(owner), Self.validID(job.id), Self.validID(shareID), Self.validOrigin(origin) else { throw AppFailure(message: "История недоступна") }
+        guard available, Self.validID(owner), Self.validID(job.id), Self.validID(shareID), Self.validOrigin(origin) else { throw AppFailure(message: L("История недоступна")) }
         _ = try Self.validateURL(url)
         let entry = SentLink(origin: origin, owner: owner, shareID: shareID, jobID: job.id, name: job.name,
                              created: created ?? Date(), expires: expires ?? (job.never ? nil : Date().addingTimeInterval(Double(job.days) * 86400)))
@@ -96,11 +96,11 @@ struct SentLink: Codable, Identifiable, Equatable {
         for removed in previous.dropFirst(199) { try await Task.detached { try delete(removed.account) }.value }
     }
     func link(_ entry: SentLink) async throws -> URL {
-        guard let current = entries.first(where: { $0.account == entry.account }), current.active else { throw AppFailure(message: "Ссылка отозвана или срок действия истёк") }
+        guard let current = entries.first(where: { $0.account == entry.account }), current.active else { throw AppFailure(message: L("Ссылка отозвана или срок действия истёк")) }
         let read = self.read
-        guard let value = try await Task.detached(operation: { try read(entry.account) }).value else { throw AppFailure(message: "Ссылка недоступна в Keychain") }
+        guard let value = try await Task.detached(operation: { try read(entry.account) }).value else { throw AppFailure(message: L("Ссылка недоступна в Keychain")) }
         // A revoke may have completed while Keychain was unlocked.
-        guard entries.first(where: { $0.account == entry.account })?.active == true else { throw AppFailure(message: "Ссылка отозвана или срок действия истёк") }
+        guard entries.first(where: { $0.account == entry.account })?.active == true else { throw AppFailure(message: L("Ссылка отозвана или срок действия истёк")) }
         return try Self.validateURL(value)
     }
     func markRevoked(_ entry: SentLink) async throws {

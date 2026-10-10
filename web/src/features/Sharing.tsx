@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useState } from 'react';
 import { api, idPath } from '../api';
 import { useResource, useTask } from '../hooks';
@@ -19,14 +20,16 @@ export function ShareDialog({ node, onClose }: { node: FileNode; onClose: () => 
   const [url, setURL] = useState('');
   const task = useTask();
   return (
-    <Modal title="Публичный доступ" subtitle={node.name} onClose={onClose} busy={task.busy}>
+    <Modal title={t('Публичный доступ')} subtitle={node.name} onClose={onClose} busy={task.busy}>
       <div className="info-box">
         <Icon name="link" />
         <p>
           {node.kind === 'folder'
-            ? 'Ссылка откроет папку и вложенные папки, включая новые файлы. Фото и текст можно просмотреть в браузере, остальные файлы — скачать.'
-            : 'Файл можно будет скачать без учётной записи.'}{' '}
-          Ссылку можно отозвать в любое время.
+            ? t(
+                'Ссылка откроет папку и вложенные папки, включая новые файлы. Фото и текст можно просмотреть в браузере, остальные файлы — скачать.',
+              )
+            : t('Файл можно будет скачать без учётной записи.')}{' '}
+          {t('Ссылку можно отозвать в любое время.')}
         </p>
       </div>
       <form
@@ -51,39 +54,39 @@ export function ShareDialog({ node, onClose }: { node: FileNode; onClose: () => 
       >
         <div className="form-grid">
           <label>
-            Срок действия
+            {t('Срок действия')}
             <select value={expiry} onChange={(e) => setExpiry(e.target.value)}>
-              <option value="1">1 день</option>
-              <option value="7">7 дней</option>
-              <option value="30">30 дней</option>
-              <option value="forever">Без срока</option>
+              <option value="1">{t('1 день')}</option>
+              <option value="7">{t('7 дней')}</option>
+              <option value="30">{t('30 дней')}</option>
+              <option value="forever">{t('Без срока')}</option>
             </select>
           </label>
           <label>
-            Пароль <span className="muted">необязательно</span>
+            {t('Пароль')} <span className="muted">{t('необязательно')}</span>
             <input
               type="password"
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="От 12 символов"
+              placeholder={t('От 12 символов')}
             />
           </label>
         </div>
         <ErrorBox message={task.error} />
         <Button type="submit" variant="primary" icon="link" disabled={task.busy}>
-          Создать ссылку
+          {t('Создать ссылку')}
         </Button>
       </form>
       {url && (
         <div className="generated-link">
           <label>
-            Сохраните ссылку — она показывается только сейчас
+            {t('Сохраните ссылку — она показывается только сейчас')}
             <input
               readOnly
               value={url}
               onFocus={(e) => e.target.select()}
-              aria-label="Созданная публичная ссылка"
+              aria-label={t('Созданная публичная ссылка')}
             />
           </label>
           <Button
@@ -95,19 +98,19 @@ export function ShareDialog({ node, onClose }: { node: FileNode; onClose: () => 
               })
             }
           >
-            Скопировать
+            {t('Скопировать')}
           </Button>
         </div>
       )}
       <h3 className="section-title">
-        Ссылки на этот {node.kind === 'folder' ? 'каталог' : 'файл'}
+        {t('Ссылки на этот')} {node.kind === 'folder' ? t('каталог') : t('файл')}
       </h3>
       <State
         loading={links.loading}
         error={links.error}
         empty={!links.value?.length}
         icon="link"
-        title="Ссылок пока нет"
+        title={t('Ссылок пока нет')}
         retry={links.refresh}
       />
       <div className="compact-list">
@@ -119,14 +122,14 @@ export function ShareDialog({ node, onClose }: { node: FileNode; onClose: () => 
             <div>
               <strong>
                 {link.revoked
-                  ? 'Отозвана'
+                  ? t('Отозвана')
                   : link.expires_at && link.expires_at <= Date.now() / 1000
-                    ? 'Срок истёк'
-                    : 'Публичная ссылка'}
+                    ? t('Срок истёк')
+                    : t('Публичная ссылка')}
               </strong>
               <small>
-                Создана {date(link.created_at)} ·{' '}
-                {link.expires_at ? `до ${date(link.expires_at)}` : 'без срока'}
+                {t('Создана')} {date(link.created_at)} ·{' '}
+                {link.expires_at ? t('до {0}', [date(link.expires_at)]) : t('без срока')}
               </small>
             </div>
             {!link.revoked && (
@@ -141,7 +144,7 @@ export function ShareDialog({ node, onClose }: { node: FileNode; onClose: () => 
                   })
                 }
               >
-                Отозвать
+                {t('Отозвать')}
               </Button>
             )}
           </div>
@@ -149,7 +152,7 @@ export function ShareDialog({ node, onClose }: { node: FileNode; onClose: () => 
       </div>
       <Pager offset={offset} count={links.value?.length ?? 0} onChange={setOffset} />
       <p className="hint">
-        Адрес существующей ссылки восстановить нельзя. При необходимости создайте новую.
+        {t('Адрес существующей ссылки восстановить нельзя. При необходимости создайте новую.')}
       </p>
     </Modal>
   );
@@ -178,22 +181,23 @@ export function AccessDialog({ node, onClose }: { node: FileNode; onClose: () =>
     notify('Права доступа обновлены');
   }
   return (
-    <Modal title="Доступ к папке" subtitle={node.name} onClose={onClose} busy={task.busy}>
+    <Modal title={t('Доступ к папке')} subtitle={node.name} onClose={onClose} busy={task.busy}>
       <div className="info-box">
         <Icon name="shield" />
         <p>
-          Права наследуются вложенными папками и файлами. Из прав пользователя, его групп и
-          родительских папок действует самое широкое. Владелец личной папки сохраняет полный доступ.
+          {t(
+            'Права наследуются вложенными папками и файлами. Из прав пользователя, его групп и родительских папок действует самое широкое. Владелец личной папки сохраняет полный доступ.',
+          )}
         </p>
       </div>
-      <h3 className="section-title">Права, назначенные в этой папке</h3>
+      <h3 className="section-title">{t('Права, назначенные в этой папке')}</h3>
       <State
         loading={grants.loading}
         error={grants.error}
         empty={!grants.value?.length}
         icon="users"
-        title="Прямых разрешений нет"
-        description="Могут действовать права родительской папки или владельца."
+        title={t('Прямых разрешений нет')}
+        description={t('Могут действовать права родительской папки или владельца.')}
         retry={grants.refresh}
       />
       <div className="compact-list">
@@ -205,11 +209,12 @@ export function AccessDialog({ node, onClose }: { node: FileNode; onClose: () =>
             <div>
               <strong>{grant.principal_name ?? grant.principal_id}</strong>
               <small>
-                {grant.principal_type === 'group' ? 'Группа' : 'Пользователь'} · {roles[grant.role]}
+                {grant.principal_type === 'group' ? t('Группа') : t('Пользователь')} ·{' '}
+                {t(roles[grant.role])}
               </small>
             </div>
             <select
-              aria-label={`Роль ${grant.principal_name ?? grant.principal_id}`}
+              aria-label={t('Роль {0}', [grant.principal_name ?? grant.principal_id])}
               value={grant.role}
               disabled={task.busy}
               onChange={(e) =>
@@ -218,14 +223,14 @@ export function AccessDialog({ node, onClose }: { node: FileNode; onClose: () =>
             >
               {roles.map((role, i) => (
                 <option key={i} value={i}>
-                  {i === 0 ? 'Убрать разрешение' : role}
+                  {i === 0 ? t('Убрать разрешение') : t(role)}
                 </option>
               ))}
             </select>
           </div>
         ))}
       </div>
-      <h3 className="section-title">Добавить пользователя или группу</h3>
+      <h3 className="section-title">{t('Добавить пользователя или группу')}</h3>
       <form
         className="search-form"
         onSubmit={(e) => {
@@ -236,40 +241,44 @@ export function AccessDialog({ node, onClose }: { node: FileNode; onClose: () =>
         }}
       >
         <input
-          aria-label="Поиск пользователя или группы"
+          aria-label={t('Поиск пользователя или группы')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Имя пользователя или группы"
+          placeholder={t('Имя пользователя или группы')}
           maxLength={128}
         />
         <Button type="submit" icon="search">
-          Найти
+          {t('Найти')}
         </Button>
       </form>
       <State loading={principals.loading} error={principals.error} retry={principals.refresh} />
       <div className="form-grid">
         <label>
-          Кому
-          <select aria-label="Кому" value={selected} onChange={(e) => setSelected(e.target.value)}>
-            <option value="">Выберите из списка</option>
+          {t('Кому')}
+          <select
+            aria-label={t('Кому')}
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+          >
+            <option value="">{t('Выберите из списка')}</option>
             {principals.value?.map((p) => (
               <option key={`${p.type}:${p.id}`} value={`${p.type}:${p.id}`}>
                 {p.name}
-                {p.type === 'group' ? ' · группа' : ''}
+                {p.type === 'group' ? t(' · группа') : ''}
               </option>
             ))}
           </select>
         </label>
         <label>
-          Роль
+          {t('Роль')}
           <select
-            aria-label="Роль нового участника"
+            aria-label={t('Роль нового участника')}
             value={role}
             onChange={(e) => setRole(Number(e.target.value))}
           >
             {roles.slice(1).map((label, i) => (
               <option key={i} value={i + 1}>
-                {label}
+                {t(label)}
               </option>
             ))}
           </select>
@@ -284,13 +293,14 @@ export function AccessDialog({ node, onClose }: { node: FileNode; onClose: () =>
         }}
       />
       <p className="hint">
-        Читатель скачивает. Редактор добавляет, перемещает и удаляет файлы. Управляющий также выдаёт
-        права и создаёт публичные ссылки.
+        {t(
+          'Читатель скачивает. Редактор добавляет, перемещает и удаляет файлы. Управляющий также выдаёт права и создаёт публичные ссылки.',
+        )}
       </p>
       <ErrorBox message={task.error} />
       <div className="modal-footer">
         <Button onClick={onClose} disabled={task.busy}>
-          Готово
+          {t('Готово')}
         </Button>
         <Button
           variant="primary"
@@ -307,7 +317,7 @@ export function AccessDialog({ node, onClose }: { node: FileNode; onClose: () =>
             })
           }
         >
-          Добавить доступ
+          {t('Добавить доступ')}
         </Button>
       </div>
     </Modal>

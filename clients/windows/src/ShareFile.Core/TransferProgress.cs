@@ -49,29 +49,29 @@ public sealed record TransferSummary(double Size, double Offset, int Completed, 
         var completed = jobs.Count(j => j.Status == UploadStatus.Done);
         var percent = size > 0 ? Math.Floor(offset / size * 100) : completed == jobs.Count ? 100 : 0;
         var blocked = jobs.Any(j => j.Status is not (UploadStatus.Queued or UploadStatus.Uploading or UploadStatus.Uploaded or UploadStatus.Sharing or UploadStatus.Done));
-        var detail = completed == jobs.Count ? "Загрузка завершена"
-            : jobs.Any(j => j.Status is UploadStatus.Error or UploadStatus.Uncertain or UploadStatus.Cancelling) ? "Требуется действие · Оставшееся время —"
-            : blocked ? "Приостановлено · Оставшееся время —"
-            : size == offset ? "Данные переданы · Завершаем загрузку…"
+        var detail = completed == jobs.Count ? Localization.Text("Загрузка завершена")
+            : jobs.Any(j => j.Status is UploadStatus.Error or UploadStatus.Uncertain or UploadStatus.Cancelling) ? Localization.Text("Требуется действие · Оставшееся время —")
+            : blocked ? Localization.Text("Приостановлено · Оставшееся время —")
+            : size == offset ? Localization.Text("Данные переданы · Завершаем загрузку…")
             : jobs.Any(j => j.Status == UploadStatus.Uploading) ? Details(rate, rate > 0 ? (size - offset) / rate : null)
-            : "В очереди · Оставшееся время —";
+            : Localization.Text("В очереди · Оставшееся время —");
         return new(size, offset, completed, jobs.Count, percent, detail);
     }
     public static string Bytes(double bytes)
     {
-        string[] units = ["Б", "КиБ", "МиБ", "ГиБ", "ТиБ"];
+        string[] units = [Localization.Text("Б"), Localization.Text("КиБ"), Localization.Text("МиБ"), Localization.Text("ГиБ"), Localization.Text("ТиБ")];
         var index = 0;
         while (bytes >= 1024 && index < units.Length - 1) { bytes /= 1024; index++; }
-        return index == 0 ? $"{bytes:F0} {units[index]}" : $"{bytes:F1} {units[index]}";
+        return bytes.ToString(index == 0 ? "F0" : "F1", Localization.Culture) + " " + units[index];
     }
     public static string RemainingTime(double seconds)
     {
         seconds = Math.Max(1, Math.Ceiling(seconds));
-        if (seconds < 60) return $"{seconds:F0} с";
-        if (seconds < 3600) return $"{Math.Ceiling(seconds / 60):F0} мин";
+        if (seconds < 60) return Localization.Text("{0:F0} с", seconds);
+        if (seconds < 3600) return Localization.Text("{0:F0} мин", Math.Ceiling(seconds / 60));
         var minutes = Math.Ceiling(seconds / 60);
-        return $"{Math.Floor(minutes / 60):F0} ч" + (minutes % 60 > 0 ? $" {minutes % 60:F0} мин" : "");
+        return Localization.Text("{0:F0} ч", Math.Floor(minutes / 60)) + (minutes % 60 > 0 ? Localization.Text(" {0:F0} мин", minutes % 60) : "");
     }
-    public static string Details(double rate, double? seconds) => rate <= 0 ? "Скорость — · Оцениваем оставшееся время…"
-        : Bytes(rate) + "/с · " + (seconds is null ? "Оставшееся время —" : "Осталось ≈ " + RemainingTime(seconds.Value));
+    public static string Details(double rate, double? seconds) => rate <= 0 ? Localization.Text("Скорость — · Оцениваем оставшееся время…")
+        : Bytes(rate) + Localization.Text("/с · ") + (seconds is null ? Localization.Text("Оставшееся время —") : Localization.Text("Осталось ≈ ") + RemainingTime(seconds.Value));
 }

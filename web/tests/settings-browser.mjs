@@ -85,9 +85,11 @@ try {
   page = await admin.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => {
-    if (/Refused|violat.*Content Security/i.test(m.text())) errors.push(m.text());
+    // Connection refusal is expected while this test restarts the listeners.
+    if (/Content Security Policy/i.test(m.text())) errors.push(m.text());
   });
   await page.goto(adminURL);
+  await page.getByLabel('Language', { exact: true }).selectOption('ru');
   await page.getByLabel('Имя пользователя', { exact: true }).fill('admin');
   await page.getByLabel('Пароль', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Войти в хранилище', exact: true }).click();

@@ -52,7 +52,7 @@ func (a *App) guestNode(w http.ResponseWriter, r *http.Request) (shares.Share, m
 	}
 	sh, err := a.Shares.Authorize(r.Context(), token, session)
 	if err == shares.ErrPassword {
-		renderShare(w, http.StatusUnauthorized, sharePageData{Title: "Пароль ссылки", Base: "/s/" + token, Locked: true})
+		renderShare(w, r, http.StatusUnauthorized, sharePageData{Title: "Пароль ссылки", Base: "/s/" + token, Locked: true})
 		return sh, metadata.Node{}, false
 	}
 	if err != nil {
@@ -105,7 +105,7 @@ func (a *App) guest(w http.ResponseWriter, r *http.Request) {
 	data.Nodes = out
 	data.Previous, data.Next = offset > 0, len(out) == limit
 	data.PreviousOffset, data.NextOffset, data.Limit = max(0, offset-limit), offset+limit, limit
-	renderShare(w, http.StatusOK, data)
+	renderShare(w, r, http.StatusOK, data)
 }
 func (a *App) unlock(w http.ResponseWriter, r *http.Request) {
 	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(30 * time.Second))

@@ -85,6 +85,33 @@ class GtkTests(unittest.TestCase):
         if errors.called:
             raise AssertionError("GTK callback failed during shutdown: " + repr(errors.call_args_list))
 
+    def test_language_switch_updates_widgets_preserves_drafts_and_persists(self):
+        window = self.app.window
+        self.app.origin.set_text("https://unsaved.example")
+        self.app.password_entry.set_text("unsaved-password")
+        self.app.days.set_value(90)
+        self.app.history_search.set_text("Отчёт 日本語")
+        self.app.shortcut_notice("Clipboard image: Ctrl+Alt+P")
+        self.app.language_picker.set_active_id("ru")
+        self.spin()
+        self.assertIs(self.app.window, window)
+        self.assertEqual(self.app.add_button.get_label(), "Загрузить и поделиться…")
+        self.assertEqual(self.app.tree.get_column(0).get_title(), "Файл или папка")
+        self.assertEqual(self.app.controller.store.load()["settings"]["language"], "ru")
+        self.assertEqual(self.app.origin.get_text(), "https://unsaved.example")
+        self.assertEqual(self.app.password_entry.get_text(), "unsaved-password")
+        self.assertEqual(self.app.days.get_value_as_int(), 90)
+        self.assertEqual(self.app.shortcut_label.get_text(), "Изображение из буфера: Ctrl+Alt+P")
+        self.assertEqual(self.app.history_search.get_text(), "Отчёт 日本語")
+        self.app.language_picker.set_active_id("en")
+        self.spin()
+        self.assertEqual(self.app.add_button.get_label(), "Upload and share…")
+        self.assertEqual(self.app.tree.get_column(0).get_title(), "File or folder")
+        self.app.shortcut_notice("Clipboard image: Ctrl+Alt+U")
+        self.app.history_search.set_text("")
+        self.app._settings_identity = None
+        self.app.refresh(self.app.controller.snapshot())
+
     def hide_notebook_pages(self):
         # Restore the startup visibility state even if another test showed the window.
         self.app.window.hide()
@@ -160,7 +187,7 @@ class GtkTests(unittest.TestCase):
                 time.sleep(0.01)
             self.wait_idle()
             self.assertEqual(len(notifications), 1)
-            self.assertIn("Ссылки скопированы", notifications[0][1])
+            self.assertIn("Links copied", notifications[0][1])
             self.assertIn("/s/", clipboard.wait_for_text())
             self.assertFalse(self.app.window.get_visible())
             self.assertEqual(list(self.root.glob("state/clipboard/Screenshot-*.png")), [])
@@ -172,7 +199,7 @@ class GtkTests(unittest.TestCase):
                     break
                 time.sleep(0.01)
             self.assertEqual(len(self.app.controller.snapshot()["jobs"]), before)
-            self.assertIn("нет изображения", self.app.controller.snapshot()["notice"])
+            self.assertIn("No image", self.app.controller.snapshot()["notice"])
         finally:
             self.app.notification = original
 
@@ -249,7 +276,7 @@ class GtkTests(unittest.TestCase):
             self.assertEqual(len(notifications), 1)
             title, body, clipboard = notifications[0]
             self.assertEqual(len(clipboard.splitlines()), 2)
-            self.assertIn("Ссылки скопированы", body)
+            self.assertIn("Links copied", body)
             self.assertNotIn("/s/", body)
             self.assertNotIn("gtk-test-only-token", body)
             self.assertFalse(self.app.window.get_visible())
@@ -264,7 +291,7 @@ class GtkTests(unittest.TestCase):
             self.app.notification = lambda title, body: notices.append(body)
             batch = {"links": ["https://example.test/s/private"], "names": ["name.txt"], "notify": True, "failed": 0}
             self.app.complete(batch)
-            self.assertIn("Не удалось скопировать", notices[-1])
+            self.assertIn("Could not copy", notices[-1])
             self.app.clipboard = lambda links: copies.extend(links) or True
             self.app.complete({**batch, "notify": False})
             self.assertEqual(len(notices), 1)
@@ -320,7 +347,7 @@ class GtkTests(unittest.TestCase):
             self.assertEqual(len(copies), 1)
             self.app.controller.revoke_history(identity).result(timeout=5)
             self.wait_idle()
-            self.assertEqual(self.app.history_rows[0][3], "Отозвана")
+            self.assertEqual(self.app.history_rows[0][3], "Revoked")
             self.assertFalse(self.app.history_buttons["copy"].get_sensitive())
         finally:
             self.app.clipboard, self.app.open_url = old_clipboard, old_open

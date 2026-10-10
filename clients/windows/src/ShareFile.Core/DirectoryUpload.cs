@@ -18,12 +18,12 @@ public sealed partial class UploadEngine
     {
         var relative = Path.GetRelativePath(root, source);
         if (relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) || Path.IsPathRooted(relative))
-            throw new ClientException("Файл находится вне загружаемой папки");
+            throw new ClientException(Localization.Text("Файл находится вне загружаемой папки"));
         // Reject links and junctions, including a changed ancestor, before opening files.
         for (string? current = source; current is not null; current = Path.GetDirectoryName(current))
         {
             if ((File.GetAttributes(current) & (FileAttributes.ReparsePoint | FileAttributes.Device)) != 0)
-                throw new ClientException("Папка содержит символическую ссылку или специальный файл");
+                throw new ClientException(Localization.Text("Папка содержит символическую ссылку или специальный файл"));
             if (!OperatingSystem.IsWindows() && current == root) break;
             if (current == Path.GetPathRoot(current)) break;
         }
@@ -44,7 +44,7 @@ public sealed partial class UploadEngine
                 // Check the opened handle too: a parent can become a junction during open.
                 var buffer = new StringBuilder(32768);
                 var length = GetFinalPathNameByHandle(file.SafeFileHandle, buffer, (uint)buffer.Capacity, 0);
-                if (length == 0 || length >= buffer.Capacity) throw new ClientException("Не удалось проверить путь файла");
+                if (length == 0 || length >= buffer.Capacity) throw new ClientException(Localization.Text("Не удалось проверить путь файла"));
                 var actual = buffer.ToString();
                 actual = actual.StartsWith(@"\\?\UNC\", StringComparison.Ordinal) ? @"\\" + actual[8..] :
                     actual.StartsWith(@"\\?\", StringComparison.Ordinal) ? actual[4..] : actual;

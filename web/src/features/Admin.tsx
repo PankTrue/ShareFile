@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useState } from 'react';
 import { api, APIError, idPath } from '../api';
 import { useResource, useTask } from '../hooks';
@@ -18,12 +19,12 @@ export function Users() {
   return (
     <>
       <PageTitle
-        eyebrow="АДМИНИСТРИРОВАНИЕ"
-        title="Пользователи"
-        description="Учётные записи, личные папки и доступ к хранилищу."
+        eyebrow={t('АДМИНИСТРИРОВАНИЕ')}
+        title={t('Пользователи')}
+        description={t('Учётные записи, личные папки и доступ к хранилищу.')}
       >
         <Button variant="primary" icon="plus" onClick={() => setDialog({ kind: 'new' })}>
-          Добавить пользователя
+          {t('Добавить пользователя')}
         </Button>
       </PageTitle>
       <section className="content-card">
@@ -41,18 +42,21 @@ export function Users() {
               <div className="item-copy">
                 <strong>
                   {user.username}
-                  {user.id === session.user.id && <span className="muted"> · вы</span>}
+                  {user.id === session.user.id && <span className="muted"> {t('· вы')}</span>}
                 </strong>
                 <small>
-                  {user.admin ? 'Администратор' : 'Пользователь'} · личная папка создана
+                  {user.admin ? t('Администратор') : t('Пользователь')}{' '}
+                  {t('· личная папка создана')}
                 </small>
               </div>
               <span className={`badge ${user.active ? 'green' : 'neutral'}`}>
-                {user.active ? 'Активен' : 'Отключён'}
+                {user.active ? t('Активен') : t('Отключён')}
               </span>
-              <Button onClick={() => setDialog({ kind: 'password', user })}>Сменить пароль</Button>
+              <Button onClick={() => setDialog({ kind: 'password', user })}>
+                {t('Сменить пароль')}
+              </Button>
               <Button variant="ghost" onClick={() => setDialog({ kind: 'status', user })}>
-                {user.active ? 'Отключить' : 'Включить'}
+                {user.active ? t('Отключить') : t('Включить')}
               </Button>
             </div>
           ))}
@@ -88,13 +92,19 @@ function UserDialog({
   if (dialog.kind === 'status')
     return (
       <Confirm
-        title={dialog.user.active ? 'Отключить пользователя?' : 'Включить пользователя?'}
+        title={dialog.user.active ? t('Отключить пользователя?') : t('Включить пользователя?')}
         description={
           dialog.user.active
-            ? `Файлы «${dialog.user.username}» сохранятся. Сессии, устройства и публичные ссылки пользователя будут отозваны. Последнего активного администратора отключить нельзя.`
-            : `Пользователь «${dialog.user.username}» сможет войти. Старые публичные ссылки и подключения не возобновятся.`
+            ? t(
+                'Файлы «{0}» сохранятся. Сессии, устройства и публичные ссылки пользователя будут отозваны. Последнего активного администратора отключить нельзя.',
+                [dialog.user.username],
+              )
+            : t(
+                'Пользователь «{0}» сможет войти. Старые публичные ссылки и подключения не возобновятся.',
+                [dialog.user.username],
+              )
         }
-        label={dialog.user.active ? 'Отключить' : 'Включить'}
+        label={dialog.user.active ? t('Отключить') : t('Включить')}
         danger={dialog.user.active}
         onClose={onClose}
         busy={task.busy}
@@ -120,7 +130,7 @@ function UserDialog({
     );
   return (
     <Modal
-      title={dialog.kind === 'new' ? 'Новый пользователь' : 'Сменить пароль'}
+      title={dialog.kind === 'new' ? t('Новый пользователь') : t('Сменить пароль')}
       subtitle={dialog.kind !== 'new' ? dialog.user.username : undefined}
       onClose={onClose}
       busy={task.busy}
@@ -142,52 +152,54 @@ function UserDialog({
       >
         {dialog.kind === 'new' && (
           <label>
-            Имя пользователя
+            {t('Имя пользователя')}
             <input
               autoFocus
               autoComplete="off"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
-              placeholder="Например, alex"
+              placeholder={t('Например, alex')}
             />
           </label>
         )}
         <label>
-          Пароль
+          {t('Пароль')}
           <input
             type="password"
             autoComplete="new-password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Не менее 12 символов"
+            placeholder={t('Не менее 12 символов')}
           />
         </label>
         {dialog.kind === 'new' ? (
           <>
             <label className="checkbox-label">
               <input type="checkbox" checked={admin} onChange={(e) => setAdmin(e.target.checked)} />
-              Администратор
+              {t('Администратор')}
             </label>
             <p className="hint">
-              Администратор управляет всеми файлами и учётными записями. Личная папка и папка
-              Uploads создадутся автоматически.
+              {t(
+                'Администратор управляет всеми файлами и учётными записями. Личная папка и папка Uploads создадутся автоматически.',
+              )}
             </p>
           </>
         ) : (
           <p className="hint">
-            Все активные сессии и подключения пользователя будут отозваны. Если это ваша запись,
-            потребуется войти заново.
+            {t(
+              'Все активные сессии и подключения пользователя будут отозваны. Если это ваша запись, потребуется войти заново.',
+            )}
           </p>
         )}
         <ErrorBox message={task.error} />
         <div className="modal-footer">
           <Button onClick={onClose} disabled={task.busy}>
-            Отмена
+            {t('Отмена')}
           </Button>
           <Button type="submit" variant="primary" disabled={task.busy}>
-            Сохранить
+            {t('Сохранить')}
           </Button>
         </div>
       </form>
@@ -202,12 +214,12 @@ export function Groups() {
   return (
     <>
       <PageTitle
-        eyebrow="АДМИНИСТРИРОВАНИЕ"
-        title="Группы"
-        description="Объединяйте пользователей и назначайте общие права на папки."
+        eyebrow={t('АДМИНИСТРИРОВАНИЕ')}
+        title={t('Группы')}
+        description={t('Объединяйте пользователей и назначайте общие права на папки.')}
       >
         <Button variant="primary" icon="plus" onClick={() => setCreating(true)}>
-          Создать группу
+          {t('Создать группу')}
         </Button>
       </PageTitle>
       <section className="content-card">
@@ -216,8 +228,8 @@ export function Groups() {
           error={data.error}
           empty={!data.value?.length}
           icon="users"
-          title="Групп пока нет"
-          description="Создайте группу для семьи, команды или общего проекта."
+          title={t('Групп пока нет')}
+          description={t('Создайте группу для семьи, команды или общего проекта.')}
           retry={data.refresh}
         />
         <div className="item-list">
@@ -228,9 +240,9 @@ export function Groups() {
               </span>
               <div className="item-copy">
                 <strong>{group.name}</strong>
-                <small>Права настраиваются в разделе файлов</small>
+                <small>{t('Права настраиваются в разделе файлов')}</small>
               </div>
-              <Button onClick={() => setSelected(group)}>Участники</Button>
+              <Button onClick={() => setSelected(group)}>{t('Участники')}</Button>
             </div>
           ))}
         </div>
@@ -245,7 +257,7 @@ function CreateGroup({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
   const [name, setName] = useState('');
   const task = useTask();
   return (
-    <Modal title="Новая группа" onClose={onClose} busy={task.busy}>
+    <Modal title={t('Новая группа')} onClose={onClose} busy={task.busy}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -259,16 +271,16 @@ function CreateGroup({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
         }}
       >
         <label>
-          Название группы
+          {t('Название группы')}
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} required />
         </label>
         <ErrorBox message={task.error} />
         <div className="modal-footer">
           <Button onClick={onClose} disabled={task.busy}>
-            Отмена
+            {t('Отмена')}
           </Button>
           <Button type="submit" variant="primary" disabled={task.busy}>
-            Создать
+            {t('Создать')}
           </Button>
         </div>
       </form>
@@ -281,7 +293,7 @@ function Members({ group, onClose }: { group: Group; onClose: () => void }) {
   const members = useResource<string[]>(`/api/v1/admin/groups/${idPath(group.id)}/members`);
   const task = useTask();
   return (
-    <Modal title="Участники группы" subtitle={group.name} onClose={onClose} busy={task.busy}>
+    <Modal title={t('Участники группы')} subtitle={group.name} onClose={onClose} busy={task.busy}>
       <State
         loading={users.loading || members.loading}
         error={users.error || members.error}
@@ -320,18 +332,19 @@ function Members({ group, onClose }: { group: Group; onClose: () => void }) {
                 }}
               />
               <strong>{user.username}</strong>
-              <span className="muted">{user.active ? '' : 'Отключён'}</span>
+              <span className="muted">{user.active ? '' : t('Отключён')}</span>
             </label>
           ))}
       </div>
       <ErrorBox message={task.error} />
       <p className="hint">
-        Удаление участника может навсегда отозвать созданные им публичные ссылки, если он потеряет
-        право управления.
+        {t(
+          'Удаление участника может навсегда отозвать созданные им публичные ссылки, если он потеряет право управления.',
+        )}
       </p>
       <div className="modal-footer">
         <Button onClick={onClose} disabled={task.busy}>
-          Готово
+          {t('Готово')}
         </Button>
       </div>
     </Modal>
@@ -343,9 +356,9 @@ export function SettingsPage() {
   return (
     <>
       <PageTitle
-        eyebrow="АДМИНИСТРИРОВАНИЕ"
-        title="Настройки"
-        description="Диск, директория хранения, адреса доступа и параметры сервера."
+        eyebrow={t('АДМИНИСТРИРОВАНИЕ')}
+        title={t('Настройки')}
+        description={t('Диск, директория хранения, адреса доступа и параметры сервера.')}
       />
       <ServerSettings />
       <State loading={data.loading} error={data.error} retry={data.refresh} />
@@ -366,8 +379,8 @@ function SettingsForm({ settings, onSaved }: { settings: Settings; onSaved: () =
             <Icon name="clock" />
           </span>
           <div>
-            <h2>Незавершённые загрузки</h2>
-            <p>Освобождайте место от забытых файлов.</p>
+            <h2>{t('Незавершённые загрузки')}</h2>
+            <p>{t('Освобождайте место от забытых файлов.')}</p>
           </div>
         </div>
         <form
@@ -383,7 +396,7 @@ function SettingsForm({ settings, onSaved }: { settings: Settings; onSaved: () =
           }}
         >
           <label>
-            Срок хранения, часов
+            {t('Срок хранения, часов')}
             <input
               type="number"
               min={1}
@@ -395,12 +408,13 @@ function SettingsForm({ settings, onSaved }: { settings: Settings; onSaved: () =
             />
           </label>
           <p className="hint">
-            Отсчитывается от последней переданной части. Новый срок применяется к новым загрузкам и
-            при продолжении существующих.
+            {t(
+              'Отсчитывается от последней переданной части. Новый срок применяется к новым загрузкам и при продолжении существующих.',
+            )}
           </p>
           <ErrorBox message={task.error} />
           <Button type="submit" variant="primary" disabled={task.busy}>
-            Сохранить настройки
+            {t('Сохранить настройки')}
           </Button>
         </form>
       </section>
@@ -410,16 +424,16 @@ function SettingsForm({ settings, onSaved }: { settings: Settings; onSaved: () =
             <Icon name="upload" />
           </span>
           <div>
-            <h2>Импорт с диска</h2>
-            <p>Скопируйте отдельный файл из настроенного источника в хранилище.</p>
+            <h2>{t('Импорт с диска')}</h2>
+            <p>{t('Скопируйте отдельный файл из настроенного источника в хранилище.')}</p>
           </div>
         </div>
         <Button icon="plus" disabled={!settings.import_roots} onClick={() => setImporting(true)}>
-          Импортировать файл
+          {t('Импортировать файл')}
         </Button>
         {!settings.import_roots && (
           <p className="hint">
-            Добавьте директории в разделе «Источники импорта» выше и примените настройки.
+            {t('Добавьте директории в разделе «Источники импорта» выше и примените настройки.')}
           </p>
         )}
       </section>
@@ -438,7 +452,7 @@ function ImportDialog({ roots, onClose }: { roots: number; onClose: () => void }
   const target = useResource<FileNode>(folder ? `/api/v1/nodes/${idPath(folder)}` : null);
   const task = useTask();
   return (
-    <Modal title="Импортировать файл" onClose={onClose} busy={task.busy}>
+    <Modal title={t('Импортировать файл')} onClose={onClose} busy={task.busy}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -458,26 +472,26 @@ function ImportDialog({ roots, onClose }: { roots: number; onClose: () => void }
       >
         <div className="form-grid">
           <label>
-            Источник
+            {t('Источник')}
             <select value={root} onChange={(e) => setRoot(Number(e.target.value))}>
               {Array.from({ length: roots }, (_, index) => (
                 <option value={index} key={index}>
-                  Источник {index + 1}
+                  {t('Источник')} {index + 1}
                 </option>
               ))}
             </select>
           </label>
           <label>
-            Имя в хранилище
+            {t('Имя в хранилище')}
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Как у исходного файла"
+              placeholder={t('Как у исходного файла')}
             />
           </label>
         </div>
         <label>
-          Путь относительно источника
+          {t('Путь относительно источника')}
           <input
             required
             value={path}
@@ -486,21 +500,22 @@ function ImportDialog({ roots, onClose }: { roots: number; onClose: () => void }
           />
         </label>
         <p className="hint">
-          Нумерация источников соответствует порядку import_dirs. Исходный файл сохранится. Папки и
-          символические ссылки импортировать нельзя.
+          {t(
+            'Нумерация источников соответствует порядку import_dirs. Исходный файл сохранится. Папки и символические ссылки импортировать нельзя.',
+          )}
         </p>
         <FolderPicker value={folder} onChange={setFolder} />
         <ErrorBox message={task.error} />
         <div className="modal-footer">
           <Button onClick={onClose} disabled={task.busy}>
-            Отмена
+            {t('Отмена')}
           </Button>
           <Button
             type="submit"
             variant="primary"
             disabled={task.busy || !folder || (target.value?.effective_role ?? 0) < 2}
           >
-            Скопировать файл
+            {t('Скопировать файл')}
           </Button>
         </div>
       </form>

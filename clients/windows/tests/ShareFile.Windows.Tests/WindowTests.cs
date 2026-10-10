@@ -8,6 +8,14 @@ namespace ShareFile.Windows.Tests;
 [Collection("Windows integration")]
 public sealed class WindowTests
 {
+    private static void RunWithDispatcher(Task task)
+    {
+        var frame = new System.Windows.Threading.DispatcherFrame();
+        _ = task.ContinueWith(_ => System.Windows.Application.Current.Dispatcher.BeginInvoke(() => frame.Continue = false));
+        System.Windows.Threading.Dispatcher.PushFrame(frame);
+        task.GetAwaiter().GetResult();
+    }
+
     [Fact]
     public async Task NativeClipboardSupportsBitmapAndPngAndShortcutIsReleased()
     {
@@ -55,13 +63,29 @@ public sealed class WindowTests
                 var model = new MainViewModel(queue, new CredentialStore(), desktop);
                 var window = new MainWindow(model);
                 Assert.False(window.IsVisible);
+                RunWithDispatcher(model.InitializeAsync());
+                model.LoadSettings();
                 window.Show(); window.UpdateLayout();
                 Assert.True(window.IsVisible); Assert.Same(model, window.DataContext); Assert.True(window.ActualWidth >= 760);
                 var tabs = Assert.IsType<System.Windows.Controls.TabControl>(window.FindName("ClientTabs"));
                 Assert.Equal(3, tabs.Items.Count);
                 tabs.SelectedIndex = 2; window.UpdateLayout();
-                Assert.Equal("История ссылок", Assert.IsType<System.Windows.Controls.TabItem>(tabs.SelectedItem).Header);
+                Assert.Equal("Link history", Assert.IsType<System.Windows.Controls.TabItem>(tabs.SelectedItem).Header);
+                model.ServerInput = "https://unsaved.example";
+                model.LinkPassword = "unsaved-password";
+                model.Days = 90;
                 model.HistorySearch = "日本語";
+                RunWithDispatcher(model.ChangeLanguageAsync("ru"));
+                window.UpdateLayout();
+                Assert.Equal("История ссылок", Assert.IsType<System.Windows.Controls.TabItem>(tabs.SelectedItem).Header);
+                Assert.Equal("https://unsaved.example", model.ServerInput);
+                Assert.Equal("unsaved-password", model.LinkPassword);
+                Assert.Equal(90, model.Days);
+                Assert.Equal("日本語", model.HistorySearch);
+                Assert.Equal("ru", queue.State.Settings.Language);
+                RunWithDispatcher(model.ChangeLanguageAsync("en"));
+                window.UpdateLayout();
+                Assert.Equal("Link history", Assert.IsType<System.Windows.Controls.TabItem>(tabs.SelectedItem).Header);
                 Assert.Empty(model.HistoryRows);
                 Assert.False(model.CopyHistoryCommand.CanExecute(null));
                 Assert.False(model.RevokeHistoryCommand.CanExecute(null));

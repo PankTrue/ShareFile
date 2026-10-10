@@ -1,3 +1,4 @@
+import { t, getLanguage } from '../i18n';
 import { useState } from 'react';
 import { api, idPath } from '../api';
 import { useResource, useTask } from '../hooks';
@@ -16,12 +17,14 @@ export function Trash() {
   return (
     <>
       <PageTitle
-        eyebrow="УПРАВЛЕНИЕ ФАЙЛАМИ"
-        title="Корзина"
-        description="Удалённые файлы хранятся 7 дней. После восстановления публичные ссылки остаются отозванными."
+        eyebrow={t('УПРАВЛЕНИЕ ФАЙЛАМИ')}
+        title={t('Корзина')}
+        description={t(
+          'Удалённые файлы хранятся 7 дней. После восстановления публичные ссылки остаются отозванными.',
+        )}
       >
         <Button icon="refresh" onClick={data.refresh}>
-          Обновить
+          {t('Обновить')}
         </Button>
       </PageTitle>
       <section className="content-card">
@@ -30,8 +33,8 @@ export function Trash() {
           error={data.error}
           empty={!data.value?.length}
           icon="trash"
-          title="Корзина пуста"
-          description="Здесь будут файлы и папки, которые ещё можно восстановить."
+          title={t('Корзина пуста')}
+          description={t('Здесь будут файлы и папки, которые ещё можно восстановить.')}
           retry={data.refresh}
         />
         <div className="item-list">
@@ -43,16 +46,16 @@ export function Trash() {
               <div className="item-copy">
                 <strong>{node.name}</strong>
                 <small>
-                  Удалён {date(node.deleted_at)} ·{' '}
-                  {node.kind === 'folder' ? 'Папка' : bytes(node.size)}
+                  {t('Удалён')} {date(node.deleted_at)} ·{' '}
+                  {node.kind === 'folder' ? t('Папка') : bytes(node.size)}
                 </small>
               </div>
               <div className="row-actions">
                 <Button icon="refresh" onClick={() => setSelected({ node, action: 'restore' })}>
-                  Восстановить
+                  {t('Восстановить')}
                 </Button>
                 <Button variant="ghost" onClick={() => setSelected({ node, action: 'purge' })}>
-                  Удалить навсегда
+                  {t('Удалить навсегда')}
                 </Button>
               </div>
             </div>
@@ -102,9 +105,14 @@ function TrashDialog({
   if (action === 'purge')
     return (
       <Confirm
-        title="Удалить навсегда?"
-        description={`«${node.name}» будет безвозвратно удалён${node.kind === 'folder' ? ' вместе со всем содержимым, в том числе удалённым ранее' : ''}.`}
-        label="Удалить навсегда"
+        title={t('Удалить навсегда?')}
+        description={t('«{0}» будет безвозвратно удалён{1}.', [
+          node.name,
+          node.kind === 'folder'
+            ? t(' вместе со всем содержимым, в том числе удалённым ранее')
+            : '',
+        ])}
+        label={t('Удалить навсегда')}
         danger
         busy={task.busy}
         error={task.error}
@@ -113,29 +121,31 @@ function TrashDialog({
       />
     );
   return (
-    <Modal title="Восстановить" subtitle={node.name} onClose={onClose} busy={task.busy}>
+    <Modal title={t('Восстановить')} subtitle={node.name} onClose={onClose} busy={task.busy}>
       <label className="checkbox-label">
         <input type="checkbox" checked={custom} onChange={(e) => setCustom(e.target.checked)} />
-        Выбрать другую папку
+        {t('Выбрать другую папку')}
       </label>
       {custom ? (
         <FolderPicker value={target} onChange={setTarget} />
       ) : (
         <p className="modal-copy">
-          Файл вернётся в прежнюю папку. При совпадении имени сервер добавит порядковый номер.
+          {t(
+            'Файл вернётся в прежнюю папку. При совпадении имени сервер добавит порядковый номер.',
+          )}
         </p>
       )}
       <ErrorBox message={task.error} />
       <div className="modal-footer">
         <Button onClick={onClose} disabled={task.busy}>
-          Отмена
+          {t('Отмена')}
         </Button>
         <Button
           variant="primary"
           disabled={task.busy || (custom && (!target || (folder.value?.effective_role ?? 0) < 2))}
           onClick={() => void submit()}
         >
-          Восстановить
+          {t('Восстановить')}
         </Button>
       </div>
     </Modal>
@@ -151,12 +161,14 @@ export function SharesPage() {
   return (
     <>
       <PageTitle
-        eyebrow="ДЕЛИТЕСЬ ФАЙЛАМИ"
-        title="Публичные ссылки"
-        description="Все ссылки, созданные вашей учётной записью. Создать новую можно в разделе файлов."
+        eyebrow={t('ДЕЛИТЕСЬ ФАЙЛАМИ')}
+        title={t('Публичные ссылки')}
+        description={t(
+          'Все ссылки, созданные вашей учётной записью. Создать новую можно в разделе файлов.',
+        )}
       >
         <Button icon="refresh" onClick={data.refresh}>
-          Обновить
+          {t('Обновить')}
         </Button>
       </PageTitle>
       <section className="content-card">
@@ -165,8 +177,8 @@ export function SharesPage() {
           error={data.error}
           empty={!data.value?.length}
           icon="link"
-          title="Публичных ссылок пока нет"
-          description="Откройте файл или папку и нажмите «Поделиться»."
+          title={t('Публичных ссылок пока нет')}
+          description={t('Откройте файл или папку и нажмите «Поделиться».')}
           retry={data.refresh}
         />
         <div className="item-list">
@@ -179,15 +191,16 @@ export function SharesPage() {
       <div className="page-note">
         <Icon name="info" />
         <span>
-          Адрес ссылки показывается только при создании. Сохранённую ссылку можно отозвать, а при
-          потере адреса — создать новую.
+          {t(
+            'Адрес ссылки показывается только при создании. Сохранённую ссылку можно отозвать, а при потере адреса — создать новую.',
+          )}
         </span>
       </div>
       {selected && (
         <Confirm
-          title="Отозвать публичную ссылку?"
-          description="Люди с этой ссылкой потеряют доступ. Отзыв нельзя отменить."
-          label="Отозвать"
+          title={t('Отозвать публичную ссылку?')}
+          description={t('Люди с этой ссылкой потеряют доступ. Отзыв нельзя отменить.')}
+          label={t('Отозвать')}
           danger
           onClose={() => setSelected(undefined)}
           busy={task.busy}
@@ -215,18 +228,19 @@ function ShareRow({ link, onRevoke }: { link: Share; onRevoke: () => void }) {
       </span>
       <div className="item-copy">
         <strong>
-          {node.value?.name ?? (node.loading ? 'Загружаем название…' : 'Ссылка на файл или папку')}
+          {node.value?.name ??
+            (node.loading ? t('Загружаем название…') : t('Ссылка на файл или папку'))}
         </strong>
         <small>
-          Создана {date(link.created_at)} ·{' '}
-          {link.expires_at ? `до ${date(link.expires_at)}` : 'без срока'}
-          {link.password_protected && ' · с паролем'}
+          {t('Создана')} {date(link.created_at)} ·{' '}
+          {link.expires_at ? t('до {0}', [date(link.expires_at)]) : t('без срока')}
+          {link.password_protected && t(' · с паролем')}
         </small>
       </div>
       <span className={`badge ${inactive ? 'neutral' : 'green'}`}>
-        {link.revoked ? 'Отозвана' : inactive ? 'Истекла' : 'Активна'}
+        {link.revoked ? t('Отозвана') : inactive ? t('Истекла') : t('Активна')}
       </span>
-      {!link.revoked && <Button onClick={onRevoke}>Отозвать</Button>}
+      {!link.revoked && <Button onClick={onRevoke}>{t('Отозвать')}</Button>}
     </div>
   );
 }
@@ -242,12 +256,12 @@ export function Devices({ requestID, onDone }: { requestID: string | null; onDon
   return (
     <>
       <PageTitle
-        eyebrow="ВАША УЧЁТНАЯ ЗАПИСЬ"
-        title="Устройства"
-        description="Приложения, которым вы разрешили доступ к хранилищу."
+        eyebrow={t('ВАША УЧЁТНАЯ ЗАПИСЬ')}
+        title={t('Устройства')}
+        description={t('Приложения, которым вы разрешили доступ к хранилищу.')}
       >
         <Button icon="refresh" onClick={data.refresh}>
-          Обновить
+          {t('Обновить')}
         </Button>
       </PageTitle>
       {requestID && (
@@ -256,22 +270,23 @@ export function Devices({ requestID, onDone }: { requestID: string | null; onDon
             <Icon name="device" />
           </span>
           <div>
-            <h2>Подключение устройства</h2>
+            <h2>{t('Подключение устройства')}</h2>
             <State loading={pairing.loading} error={pairing.error} retry={pairing.refresh} />
             {pairing.value && (
               <>
                 <p>
-                  Разрешить доступ приложению <strong>«{pairing.value.name}»</strong>?
+                  {t('Разрешить доступ приложению')} <strong>«{pairing.value.name}»</strong>?
                 </p>
                 <p className="hint">
-                  Подтверждайте только запрос, который вы начали сами. Приложение получит доступ с
-                  правами вашей учётной записи. Запрос действует до{' '}
-                  {new Date(pairing.value.expires_at * 1000).toLocaleTimeString('ru')}.
+                  {t(
+                    'Подтверждайте только запрос, который вы начали сами. Приложение получит доступ с правами вашей учётной записи. Запрос действует до',
+                  )}{' '}
+                  {new Date(pairing.value.expires_at * 1000).toLocaleTimeString(getLanguage())}.
                 </p>
                 <ErrorBox message={task.error} />
                 <div className="page-actions">
                   <Button onClick={onDone} disabled={task.busy}>
-                    Не подключать
+                    {t('Не подключать')}
                   </Button>
                   <Button
                     variant="primary"
@@ -286,12 +301,12 @@ export function Devices({ requestID, onDone }: { requestID: string | null; onDon
                       })
                     }
                   >
-                    Разрешить доступ
+                    {t('Разрешить доступ')}
                   </Button>
                 </div>
               </>
             )}
-            {pairing.error && <Button onClick={onDone}>Закрыть запрос</Button>}
+            {pairing.error && <Button onClick={onDone}>{t('Закрыть запрос')}</Button>}
           </div>
         </section>
       )}
@@ -301,8 +316,8 @@ export function Devices({ requestID, onDone }: { requestID: string | null; onDon
           error={data.error}
           empty={!data.value?.length}
           icon="device"
-          title="Устройств пока нет"
-          description="Когда вы подключите приложение, оно появится здесь."
+          title={t('Устройств пока нет')}
+          description={t('Когда вы подключите приложение, оно появится здесь.')}
           retry={data.refresh}
         />
         <div className="item-list">
@@ -314,18 +329,18 @@ export function Devices({ requestID, onDone }: { requestID: string | null; onDon
               <div className="item-copy">
                 <strong>{device.name}</strong>
                 <small>
-                  Подключено {date(device.created_at)} · до {date(device.expires_at)}
+                  {t('Подключено')} {date(device.created_at)} {t('· до')} {date(device.expires_at)}
                 </small>
               </div>
               <span className={`badge ${device.revoked ? 'neutral' : 'green'}`}>
                 {device.revoked
-                  ? 'Отозвано'
+                  ? t('Отозвано')
                   : device.expires_at <= Date.now() / 1000
-                    ? 'Истекло'
-                    : 'Подключено'}
+                    ? t('Истекло')
+                    : t('Подключено')}
               </span>
               {!device.revoked && (
-                <Button onClick={() => setSelected(device)}>Отозвать доступ</Button>
+                <Button onClick={() => setSelected(device)}>{t('Отозвать доступ')}</Button>
               )}
             </div>
           ))}
@@ -333,9 +348,12 @@ export function Devices({ requestID, onDone }: { requestID: string | null; onDon
       </section>
       {selected && (
         <Confirm
-          title="Отключить устройство?"
-          description={`Приложение «${selected.name}» потеряет доступ. Для повторного подключения потребуется новое подтверждение.`}
-          label="Отключить"
+          title={t('Отключить устройство?')}
+          description={t(
+            'Приложение «{0}» потеряет доступ. Для повторного подключения потребуется новое подтверждение.',
+            [selected.name],
+          )}
+          label={t('Отключить')}
           danger
           busy={task.busy}
           error={task.error}

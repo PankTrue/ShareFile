@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { api, APIError, errorMessage, idPath } from '../api';
 import { useResource, useTask } from '../hooks';
@@ -44,7 +45,7 @@ export function Files({
   const [uploadError, setUploadError] = useState('');
   const [dragging, setDragging] = useState(false);
   const favoriteTask = useTask();
-  const collectionTitle = collection === 'favorites' ? 'Избранное' : 'Недавние';
+  const collectionTitle = collection === 'favorites' ? t('Избранное') : t('Недавние');
   const selectionScope = `${collection ?? folderID}:${search ?? 'browse'}:${offset}`;
   const [selection, setSelection] = useState<{ scope: string; ids: string[] }>({
     scope: selectionScope,
@@ -160,7 +161,7 @@ export function Files({
       <IconButton
         icon="star"
         className={node.favorite ? 'favorite-active' : ''}
-        label={`${node.favorite ? 'Убрать из избранного' : 'Добавить в избранное'} ${currentFolder ? 'текущую папку' : node.name}`}
+        label={`${node.favorite ? t('Убрать из избранного') : t('Добавить в избранное')} ${currentFolder ? t('текущую папку') : node.name}`}
         aria-pressed={Boolean(node.favorite)}
         disabled={favoriteTask.busy}
         onClick={() => toggleFavorite(node)}
@@ -170,53 +171,55 @@ export function Files({
   return (
     <>
       <PageTitle
-        eyebrow={collection ? 'БЫСТРЫЙ ДОСТУП' : spaces ? 'СОВМЕСТНАЯ РАБОТА' : 'ВАШЕ ХРАНИЛИЩЕ'}
+        eyebrow={
+          collection ? t('БЫСТРЫЙ ДОСТУП') : spaces ? t('СОВМЕСТНАЯ РАБОТА') : t('ВАШЕ ХРАНИЛИЩЕ')
+        }
         title={
           collection
             ? collectionTitle
             : spaces
-              ? 'Доступные папки'
-              : (current.value?.name ?? 'Мои файлы')
+              ? t('Доступные папки')
+              : (current.value?.name ?? t('Мои файлы'))
         }
         description={
           collection === 'favorites'
-            ? 'Ваши избранные файлы и рабочие папки.'
+            ? t('Ваши избранные файлы и рабочие папки.')
             : collection === 'recent'
-              ? 'Последние завершённые загрузки из доступных папок. Новые файлы — сверху.'
+              ? t('Последние завершённые загрузки из доступных папок. Новые файлы — сверху.')
               : spaces
-                ? 'Личные и общие папки, к которым у вас есть доступ.'
-                : 'Сохраняйте файлы на своём диске и делитесь ими по ссылке.'
+                ? t('Личные и общие папки, к которым у вас есть доступ.')
+                : t('Сохраняйте файлы на своём диске и делитесь ими по ссылке.')
         }
       >
         {folderID && current.value && (
           <a className="button secondary" href={`/api/v1/nodes/${idPath(folderID)}/archive`}>
             <Icon name="download" />
-            Скачать всё (ZIP)
+            {t('Скачать всё (ZIP)')}
           </a>
         )}
         {editor && (
           <>
             <Button icon="plus" onClick={() => setDialog({ kind: 'new' })}>
-              Новая папка
+              {t('Новая папка')}
             </Button>
             <Button variant="primary" icon="upload" onClick={() => input.current?.click()}>
-              Загрузить файлы
+              {t('Загрузить файлы')}
             </Button>
             {manager && (
               <Button icon="folder" onClick={() => directoryInput.current?.click()}>
-                Загрузить папку
+                {t('Загрузить папку')}
               </Button>
             )}
           </>
         )}
         {manager && current.value && (
           <Button icon="link" onClick={() => setDialog({ kind: 'share', node: current.value! })}>
-            Поделиться папкой
+            {t('Поделиться папкой')}
           </Button>
         )}
         {!folderID && !collection && session.user.admin && (
           <Button variant="primary" icon="plus" onClick={() => setDialog({ kind: 'new' })}>
-            Создать общую папку
+            {t('Создать общую папку')}
           </Button>
         )}
       </PageTitle>
@@ -225,7 +228,7 @@ export function Files({
         className="visually-hidden"
         type="file"
         multiple
-        aria-label="Выбрать файлы для загрузки"
+        aria-label={t('Выбрать файлы для загрузки')}
         onChange={(e) => {
           void add(Array.from(e.target.files ?? []));
           e.target.value = '';
@@ -239,7 +242,7 @@ export function Files({
         className="visually-hidden"
         type="file"
         multiple
-        aria-label="Выбрать папку для загрузки"
+        aria-label={t('Выбрать папку для загрузки')}
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
           e.target.value = '';
@@ -274,10 +277,10 @@ export function Files({
         }}
       >
         <div className="file-toolbar">
-          <nav className="breadcrumbs" aria-label="Путь к папке">
+          <nav className="breadcrumbs" aria-label={t('Путь к папке')}>
             <button onClick={() => go('')}>
               <Icon name="folder" />
-              Папки
+              {t('Папки')}
             </button>
             {collection && (
               <span>
@@ -292,7 +295,7 @@ export function Files({
                   aria-current={node.id === folderID ? 'page' : undefined}
                   onClick={() => go(node.id)}
                 >
-                  {node.id === session.user.home_id ? 'Мои файлы' : node.name}
+                  {node.id === session.user.home_id ? t('Мои файлы') : node.name}
                 </button>
               </span>
             ))}
@@ -302,31 +305,31 @@ export function Files({
             {manager && current.value && (
               <IconButton
                 icon="shield"
-                label="Доступ к текущей папке"
+                label={t('Доступ к текущей папке')}
                 onClick={() => setDialog({ kind: 'access', node: current.value! })}
               />
             )}
             {manager && current.value && (
               <IconButton
                 icon="link"
-                label="Ссылка на текущую папку"
+                label={t('Ссылка на текущую папку')}
                 onClick={() => setDialog({ kind: 'share', node: current.value! })}
               />
             )}
-            <IconButton icon="refresh" label="Обновить файлы" onClick={refresh} />
+            <IconButton icon="refresh" label={t('Обновить файлы')} onClick={refresh} />
           </div>
         </div>
         <div className="file-subtoolbar">
           <span className="muted">
-            {resource.loading ? 'Загружаем содержимое' : `${filtered.length} на странице`}
+            {resource.loading ? t('Загружаем содержимое') : t('{0} на странице', [filtered.length])}
             {current.value && (
-              <span className="role-label">{roles[current.value.effective_role ?? 0]}</span>
+              <span className="role-label">{t(roles[current.value.effective_role ?? 0])}</span>
             )}
           </span>
         </div>
         <form
           className="file-search"
-          aria-label="Поиск файлов"
+          aria-label={t('Поиск файлов')}
           onSubmit={(event) => {
             event.preventDefault();
             try {
@@ -347,17 +350,19 @@ export function Files({
                 value={filters.query}
                 onChange={(e) => setFilters({ ...filters, query: e.target.value })}
                 placeholder={
-                  collection ? `Найти в разделе «${collectionTitle}»` : 'Найти во всех папках'
+                  collection
+                    ? t('Найти в разделе «{0}»', [collectionTitle])
+                    : t('Найти во всех папках')
                 }
                 aria-label={
                   collection
-                    ? `Поиск в разделе ${collectionTitle}`
-                    : 'Поиск по всем доступным папкам'
+                    ? t('Поиск в разделе {0}', [collectionTitle])
+                    : t('Поиск по всем доступным папкам')
                 }
               />
             </label>
             <Button type="submit" icon="search">
-              Найти
+              {t('Найти')}
             </Button>
             {searching && (
               <Button
@@ -368,35 +373,35 @@ export function Files({
                   setOffset(0);
                 }}
               >
-                Сбросить поиск
+                {t('Сбросить поиск')}
               </Button>
             )}
           </div>
           <details className="search-filters">
-            <summary>Фильтры по типу, дате и размеру</summary>
+            <summary>{t('Фильтры по типу, дате и размеру')}</summary>
             <div className="search-filter-fields">
               <label>
-                Тип
+                {t('Тип')}
                 <select
-                  aria-label="Тип"
+                  aria-label={t('Тип')}
                   value={filters.type}
                   onChange={(e) => setFilters({ ...filters, type: e.target.value })}
                 >
                   <option value="">
-                    {collection === 'recent' ? 'Все файлы' : 'Все файлы и папки'}
+                    {collection === 'recent' ? t('Все файлы') : t('Все файлы и папки')}
                   </option>
-                  <option value="file">Все файлы</option>
-                  {collection !== 'recent' && <option value="folder">Папки</option>}
-                  <option value="image">Изображения</option>
-                  <option value="document">Документы и текст</option>
-                  <option value="audio">Аудио</option>
-                  <option value="video">Видео</option>
-                  <option value="archive">Архивы</option>
-                  <option value="other">Другие файлы</option>
+                  <option value="file">{t('Все файлы')}</option>
+                  {collection !== 'recent' && <option value="folder">{t('Папки')}</option>}
+                  <option value="image">{t('Изображения')}</option>
+                  <option value="document">{t('Документы и текст')}</option>
+                  <option value="audio">{t('Аудио')}</option>
+                  <option value="video">{t('Видео')}</option>
+                  <option value="archive">{t('Архивы')}</option>
+                  <option value="other">{t('Другие файлы')}</option>
                 </select>
               </label>
               <label>
-                Добавлено с
+                {t('Добавлено с')}
                 <input
                   type="date"
                   min="1970-01-01"
@@ -405,7 +410,7 @@ export function Files({
                 />
               </label>
               <label>
-                Добавлено по
+                {t('Добавлено по')}
                 <input
                   type="date"
                   min="1970-01-01"
@@ -414,7 +419,7 @@ export function Files({
                 />
               </label>
               <label>
-                Размер от
+                {t('Размер от')}
                 <input
                   type="number"
                   min="0"
@@ -424,7 +429,7 @@ export function Files({
                 />
               </label>
               <label>
-                Размер до
+                {t('Размер до')}
                 <input
                   type="number"
                   min="0"
@@ -434,30 +439,31 @@ export function Files({
                 />
               </label>
               <label>
-                Единица размера
+                {t('Единица размера')}
                 <select
-                  aria-label="Единица размера"
+                  aria-label={t('Единица размера')}
                   value={filters.sizeUnit}
                   onChange={(e) => setFilters({ ...filters, sizeUnit: e.target.value })}
                 >
-                  <option value="1">Б</option>
-                  <option value="1024">КБ</option>
-                  <option value="1048576">МБ</option>
-                  <option value="1073741824">ГБ</option>
+                  <option value="1">{t('Б')}</option>
+                  <option value="1024">{t('КБ')}</option>
+                  <option value="1048576">{t('МБ')}</option>
+                  <option value="1073741824">{t('ГБ')}</option>
                 </select>
               </label>
             </div>
             <p className="hint">
-              Тип файла определяется по расширению. Размер применяется только к файлам, даты
-              включают выбранные дни.
+              {t(
+                'Тип файла определяется по расширению. Размер применяется только к файлам, даты включают выбранные дни.',
+              )}
             </p>
           </details>
           <ErrorBox message={searchError} />
           {searching && (
             <p className="search-scope" role="status">
               {collection
-                ? `Результаты в разделе «${collectionTitle}»`
-                : 'Результаты по всем доступным папкам'}
+                ? t('Результаты в разделе «{0}»', [collectionTitle])
+                : t('Результаты по всем доступным папкам')}
             </p>
           )}
         </form>
@@ -480,28 +486,32 @@ export function Files({
           empty={!filtered.length}
           title={
             searching
-              ? 'Ничего не найдено'
+              ? t('Ничего не найдено')
               : collection === 'favorites'
-                ? 'В избранном пока пусто'
+                ? t('В избранном пока пусто')
                 : collection === 'recent'
-                  ? 'Пока нет загрузок'
-                  : 'Здесь пока пусто'
+                  ? t('Пока нет загрузок')
+                  : t('Здесь пока пусто')
           }
           description={
             searching
-              ? 'Измените запрос или фильтры и повторите поиск.'
+              ? t('Измените запрос или фильтры и повторите поиск.')
               : collection === 'favorites'
-                ? 'Нажмите звёздочку рядом с файлом или рабочей папкой, чтобы сохранить быстрый доступ.'
+                ? t(
+                    'Нажмите звёздочку рядом с файлом или рабочей папкой, чтобы сохранить быстрый доступ.',
+                  )
                 : collection === 'recent'
-                  ? 'Загрузите файл в личную или общую папку — он появится здесь после завершения.'
+                  ? t(
+                      'Загрузите файл в личную или общую папку — он появится здесь после завершения.',
+                    )
                   : editor
-                    ? 'Загрузите первые файлы или создайте папку.'
-                    : 'Здесь появятся доступные вам файлы и папки.'
+                    ? t('Загрузите первые файлы или создайте папку.')
+                    : t('Здесь появятся доступные вам файлы и папки.')
           }
           action={
             editor && !searching ? (
               <Button variant="primary" icon="upload" onClick={() => input.current?.click()}>
-                Выбрать файлы
+                {t('Выбрать файлы')}
               </Button>
             ) : undefined
           }
@@ -515,7 +525,7 @@ export function Files({
                     <label className="select-all">
                       <input
                         type="checkbox"
-                        aria-label="Выбрать всё на странице"
+                        aria-label={t('Выбрать всё на странице')}
                         checked={allSelected}
                         ref={(node) => {
                           if (node) node.indeterminate = selected.length > 0 && !allSelected;
@@ -524,13 +534,13 @@ export function Files({
                           select(event.target.checked ? filtered.map((node) => node.id) : [])
                         }
                       />
-                      Название
+                      {t('Название')}
                     </label>
                   </th>
-                  <th>Размер</th>
-                  <th>Добавлено</th>
+                  <th>{t('Размер')}</th>
+                  <th>{t('Добавлено')}</th>
                   <th>
-                    <span className="visually-hidden">Действия</span>
+                    <span className="visually-hidden">{t('Действия')}</span>
                   </th>
                 </tr>
               </thead>
@@ -548,7 +558,7 @@ export function Files({
                       <div className="file-name">
                         <input
                           type="checkbox"
-                          aria-label={`Выбрать ${node.name}`}
+                          aria-label={t('Выбрать {0}', [node.name])}
                           checked={selected.some((item) => item.id === node.id)}
                           onChange={(event) =>
                             select(
@@ -580,7 +590,7 @@ export function Files({
                         ) : (
                           <button
                             className="name-button"
-                            title={`Открыть предпросмотр ${node.name}`}
+                            title={t('Открыть предпросмотр {0}', [node.name])}
                             onClick={() => {
                               const files = filtered.filter((item) => item.kind === 'file');
                               setPreview({
@@ -592,7 +602,9 @@ export function Files({
                             {node.name}
                           </button>
                         )}
-                        {node.kind === 'folder' && <span className="folder-type">Папка</span>}
+                        {node.kind === 'folder' && (
+                          <span className="folder-type">{t('Папка')}</span>
+                        )}
                       </div>
                       {listing &&
                         (() => {
@@ -600,20 +612,20 @@ export function Files({
                           const parent = path.at(-1);
                           const label = path
                             .map((folder) =>
-                              folder.id === session.user.home_id ? 'Мои файлы' : folder.name,
+                              folder.id === session.user.home_id ? t('Мои файлы') : folder.name,
                             )
                             .join(' / ');
                           return parent ? (
                             <button
                               className="search-location"
-                              aria-label={`Открыть папку для ${node.name}`}
+                              aria-label={t('Открыть папку для {0}', [node.name])}
                               title={label}
                               onClick={() => go(parent.id)}
                             >
                               {label}
                             </button>
                           ) : (
-                            <span className="search-location">Доступная папка</span>
+                            <span className="search-location">{t('Доступная папка')}</span>
                           );
                         })()}
                     </td>
@@ -626,8 +638,8 @@ export function Files({
                           <a
                             className="icon-button"
                             href={`/api/v1/nodes/${idPath(node.id)}/content`}
-                            title={`Скачать ${node.name}`}
-                            aria-label={`Скачать ${node.name}`}
+                            title={t('Скачать {0}', [node.name])}
+                            aria-label={t('Скачать {0}', [node.name])}
                           >
                             <Icon name="download" />
                           </a>
@@ -635,13 +647,13 @@ export function Files({
                         {(node.effective_role ?? 0) >= 3 && (
                           <IconButton
                             icon="link"
-                            label={`Поделиться ${node.name}`}
+                            label={t('Поделиться {0}', [node.name])}
                             onClick={() => setDialog({ kind: 'share', node })}
                           />
                         )}
                         {(node.effective_role ?? 0) >= 2 && (
                           <details className="action-menu">
-                            <summary aria-label={`Действия ${node.name}`}>
+                            <summary aria-label={t('Действия {0}', [node.name])}>
                               <Icon name="more" />
                             </summary>
                             <div className="menu-items">
@@ -649,24 +661,24 @@ export function Files({
                                 <>
                                   <button onClick={() => setDialog({ kind: 'rename', node })}>
                                     <Icon name="edit" />
-                                    Переименовать
+                                    {t('Переименовать')}
                                   </button>
                                   <button onClick={() => setDialog({ kind: 'move', node })}>
                                     <Icon name="move" />
-                                    Переместить
+                                    {t('Переместить')}
                                   </button>
                                 </>
                               )}
                               {node.kind === 'folder' && (node.effective_role ?? 0) >= 3 && (
                                 <button onClick={() => setDialog({ kind: 'access', node })}>
                                   <Icon name="shield" />
-                                  Права доступа
+                                  {t('Права доступа')}
                                 </button>
                               )}
                               {node.kind === 'file' && (
                                 <button onClick={() => setDialog({ kind: 'replace', node })}>
                                   <Icon name="upload" />
-                                  Заменить файлом
+                                  {t('Заменить файлом')}
                                 </button>
                               )}
                               {node.id !== session.user.home_id && (
@@ -674,7 +686,8 @@ export function Files({
                                   className="text-danger"
                                   onClick={() => setDialog({ kind: 'delete', node })}
                                 >
-                                  <Icon name="trash" />В корзину
+                                  <Icon name="trash" />
+                                  {t('В корзину')}
                                 </button>
                               )}
                             </div>
@@ -698,22 +711,24 @@ export function Files({
           <div className="drop-hint">
             <Icon name="upload" />
             <span>
-              {manager ? 'Перетащите файлы или папку' : 'Перетащите файлы'} в эту область · загрузку
-              можно приостановить
+              {manager ? t('Перетащите файлы или папку') : t('Перетащите файлы')}{' '}
+              {t('в эту область · загрузку можно приостановить')}
             </span>
           </div>
         )}
         {dragging && (
           <div className="drop-overlay">
             <Icon name="upload" />
-            <strong>Отпустите файлы для загрузки</strong>
+            <strong>{t('Отпустите файлы для загрузки')}</strong>
           </div>
         )}
       </section>
       <div className="page-note">
         <Icon name="lock" />
         <span>
-          Файлы доступны по вашим правам. При загрузке папки создаётся общая ссылка на 7 дней.
+          {t(
+            'Файлы доступны по вашим правам. При загрузке папки создаётся общая ссылка на 7 дней.',
+          )}
         </span>
       </div>
       {dialog && (
@@ -778,9 +793,12 @@ function FileDialog({
   if (dialog.kind === 'delete')
     return (
       <Confirm
-        title="Переместить в корзину?"
-        description={`«${dialog.node.name}» можно восстановить в течение 7 дней. Публичные ссылки на удалённое содержимое будут отозваны.`}
-        label="В корзину"
+        title={t('Переместить в корзину?')}
+        description={t(
+          '«{0}» можно восстановить в течение 7 дней. Публичные ссылки на удалённое содержимое будут отозваны.',
+          [dialog.node.name],
+        )}
+        label={t('В корзину')}
         danger
         busy={task.busy}
         error={task.error}
@@ -797,12 +815,12 @@ function FileDialog({
     );
   const title =
     dialog.kind === 'new'
-      ? 'Новая папка'
+      ? t('Новая папка')
       : dialog.kind === 'rename'
-        ? 'Переименовать'
+        ? t('Переименовать')
         : dialog.kind === 'replace'
-          ? 'Заменить файл'
-          : 'Переместить';
+          ? t('Заменить файл')
+          : t('Переместить');
   return (
     <Modal
       title={title}
@@ -845,7 +863,7 @@ function FileDialog({
       >
         {dialog.kind !== 'replace' && (
           <label>
-            Название
+            {t('Название')}
             <input autoFocus value={name} onChange={(e) => setName(e.target.value)} required />
           </label>
         )}
@@ -857,12 +875,13 @@ function FileDialog({
             <div className="info-box">
               <Icon name="info" />
               <p>
-                После успешной загрузки старый файл попадёт в корзину, его прямые публичные ссылки
-                будут отозваны. Новый файл получит прежнее имя.
+                {t(
+                  'После успешной загрузки старый файл попадёт в корзину, его прямые публичные ссылки будут отозваны. Новый файл получит прежнее имя.',
+                )}
               </p>
             </div>
             <label>
-              Новый файл
+              {t('Новый файл')}
               <input type="file" required onChange={(e) => setFile(e.target.files?.[0])} />
             </label>
           </>
@@ -870,7 +889,7 @@ function FileDialog({
         <ErrorBox message={task.error} />
         <div className="modal-footer">
           <Button onClick={onClose} disabled={task.busy}>
-            Отмена
+            {t('Отмена')}
           </Button>
           <Button
             type="submit"
@@ -881,10 +900,10 @@ function FileDialog({
             }
           >
             {task.busy
-              ? 'Подождите…'
+              ? t('Подождите…')
               : dialog.kind === 'replace'
-                ? 'Загрузить замену'
-                : 'Сохранить'}
+                ? t('Загрузить замену')
+                : t('Сохранить')}
           </Button>
         </div>
       </form>

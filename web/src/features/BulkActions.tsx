@@ -1,3 +1,4 @@
+import { t, message } from '../i18n';
 import { useState } from 'react';
 import { api, idPath } from '../api';
 import { useApp } from '../context';
@@ -50,30 +51,33 @@ export function BulkActions({
   const query = new URLSearchParams();
   nodes.forEach((node) => query.append('id', node.id));
   return (
-    <div className="bulk-actions" role="region" aria-label="Действия с выбранными файлами">
-      <strong role="status">Выбрано: {nodes.length}</strong>
+    <div className="bulk-actions" role="region" aria-label={t('Действия с выбранными файлами')}>
+      <strong role="status">
+        {t('Выбрано:')} {nodes.length}
+      </strong>
       <div className="bulk-buttons">
         <Button icon="move" disabled={!movable} onClick={() => setAction('move')}>
-          Переместить выбранное
+          {t('Переместить выбранное')}
         </Button>
         <Button icon="trash" disabled={!deletable} onClick={() => setAction('delete')}>
-          В корзину выбранное
+          {t('В корзину выбранное')}
         </Button>
         <a className="button secondary" href={`/api/v1/nodes/archive?${query}`}>
           <Icon name="download" />
-          Скачать выбранное (ZIP)
+          {t('Скачать выбранное (ZIP)')}
         </a>
         <Button icon="folder" disabled={!movable} onClick={() => setAction('collect')}>
-          Собрать для отправки
+          {t('Собрать для отправки')}
         </Button>
         <Button variant="ghost" onClick={onClear}>
-          Снять выделение
+          {t('Снять выделение')}
         </Button>
       </div>
       {!movable && (
         <p className="hint">
-          Для перемещения нужны права редактора на всё выбранное содержимое. Корневые папки
-          перемещать нельзя.
+          {t(
+            'Для перемещения нужны права редактора на всё выбранное содержимое. Корневые папки перемещать нельзя.',
+          )}
         </p>
       )}
       {action && (
@@ -108,7 +112,7 @@ function BulkDialog({
   const { notify } = useApp();
   const task = useTask();
   const [target, setTarget] = useState(parent);
-  const [name, setName] = useState('Для отправки');
+  const [name, setName] = useState(t('Для отправки'));
   const targetNode = useResource<FileNode>(target ? `/api/v1/nodes/${idPath(target)}` : null);
   const nodeIDs = nodes.map((node) => node.id);
   const summary =
@@ -119,9 +123,12 @@ function BulkDialog({
   if (action === 'delete')
     return (
       <Confirm
-        title={`Переместить в корзину выбранное (${nodes.length})?`}
-        description={`${summary}. Всё выбранное содержимое можно восстановить в течение 7 дней. Публичные ссылки на удалённое содержимое будут отозваны.`}
-        label="В корзину"
+        title={t('Переместить в корзину выбранное ({0})?', [nodes.length])}
+        description={t(
+          '{0}. Всё выбранное содержимое можно восстановить в течение 7 дней. Публичные ссылки на удалённое содержимое будут отозваны.',
+          [summary],
+        )}
+        label={t('В корзину')}
         danger
         busy={task.busy}
         error={task.error}
@@ -129,7 +136,7 @@ function BulkDialog({
         onConfirm={() =>
           void task.run(async () => {
             await batch({ action, node_ids: nodeIDs });
-            notify(`Перемещено в корзину: ${nodes.length}`);
+            notify(message('Перемещено в корзину: {0}', [nodes.length]));
             onClose();
             onSaved();
           })
@@ -138,7 +145,7 @@ function BulkDialog({
     );
   return (
     <Modal
-      title={action === 'collect' ? 'Собрать в папку для отправки' : 'Переместить выбранное'}
+      title={action === 'collect' ? t('Собрать в папку для отправки') : t('Переместить выбранное')}
       subtitle={`${nodes.length}: ${summary}`}
       onClose={onClose}
       busy={task.busy}
@@ -156,7 +163,9 @@ function BulkDialog({
               ...(action === 'collect' ? { name } : {}),
             });
             notify(
-              action === 'collect' ? 'Папка для отправки собрана' : `Перемещено: ${nodes.length}`,
+              action === 'collect'
+                ? 'Папка для отправки собрана'
+                : message('Перемещено: {0}', [nodes.length]),
             );
             onClose();
             onSaved();
@@ -167,7 +176,7 @@ function BulkDialog({
         {action === 'collect' && (
           <>
             <label>
-              Название папки
+              {t('Название папки')}
               <input
                 autoFocus
                 required
@@ -176,24 +185,27 @@ function BulkDialog({
               />
             </label>
             <p className="modal-copy">
-              Выбранные файлы и папки будут перемещены в новую папку. После этого можно создать одну
-              ссылку для отправки. При совпадении имён добавится числовой суффикс.
+              {t(
+                'Выбранные файлы и папки будут перемещены в новую папку. После этого можно создать одну ссылку для отправки. При совпадении имён добавится числовой суффикс.',
+              )}
             </p>
           </>
         )}
         {action === 'move' && (
           <p className="modal-copy">
-            Откройте папку назначения. Если в ней уже есть такое имя, вся операция отменится.
+            {t('Откройте папку назначения. Если в ней уже есть такое имя, вся операция отменится.')}
           </p>
         )}
         <FolderPicker value={target} onChange={setTarget} exclude={nodeIDs} />
         {action === 'collect' && (targetNode.value?.effective_role ?? 0) < 3 && (
-          <p className="hint">Для отправки по ссылке выберите папку с правами управляющего.</p>
+          <p className="hint">
+            {t('Для отправки по ссылке выберите папку с правами управляющего.')}
+          </p>
         )}
         <ErrorBox message={task.error} />
         <div className="modal-footer">
           <Button onClick={onClose} disabled={task.busy}>
-            Отмена
+            {t('Отмена')}
           </Button>
           <Button
             type="submit"
@@ -207,10 +219,10 @@ function BulkDialog({
             }
           >
             {task.busy
-              ? 'Подождите…'
+              ? t('Подождите…')
               : action === 'collect'
-                ? 'Собрать и поделиться'
-                : 'Переместить'}
+                ? t('Собрать и поделиться')
+                : t('Переместить')}
           </Button>
         </div>
       </form>

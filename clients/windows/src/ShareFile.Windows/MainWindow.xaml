@@ -7,29 +7,29 @@
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <DockPanel Margin="0,0,0,20">
       <StackPanel DockPanel.Dock="Left"><TextBlock Text="ShareFile" FontSize="28" FontWeight="SemiBold"/>
-        <TextBlock Text="Загрузить файлы или папку и поделиться ссылками" Foreground="Gray"/></StackPanel>
+        <TextBlock Text="{DynamicResource Text0}" Foreground="Gray"/></StackPanel>
       <StackPanel HorizontalAlignment="Right"><TextBlock Text="{Binding Username}" HorizontalAlignment="Right"/>
-        <Button Content="Открыть хранилище" Command="{Binding OpenWebCommand}" Margin="0,6,0,0"/></StackPanel>
+        <Button Content="{DynamicResource Text1}" Command="{Binding OpenWebCommand}" Margin="0,6,0,0"/></StackPanel>
     </DockPanel>
     <TabControl x:Name="ClientTabs" Grid.Row="1" SelectedIndex="{Binding SelectedTab}">
-      <TabItem Header="Файлы">
+      <TabItem Header="{DynamicResource Text2}">
         <Grid Margin="16"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-          <WrapPanel><Button Content="Выбрать файлы…" Command="{Binding ChooseFilesCommand}"/>
-            <Button Content="Загрузить папку…" Command="{Binding ChooseDirectoryCommand}"/>
-            <Button Content="Из буфера (Ctrl+Alt+U)" Command="{Binding UploadClipboardCommand}"/>
-            <Button Content="Пауза для всех" Command="{Binding PauseAllCommand}"/></WrapPanel>
+          <WrapPanel><Button Content="{DynamicResource Text3}" Command="{Binding ChooseFilesCommand}"/>
+            <Button Content="{DynamicResource Text4}" Command="{Binding ChooseDirectoryCommand}"/>
+            <Button Content="{DynamicResource Text5}" Command="{Binding UploadClipboardCommand}"/>
+            <Button Content="{DynamicResource Text6}" Command="{Binding PauseAllCommand}"/></WrapPanel>
           <StackPanel Grid.Row="1" Margin="0,4,0,16">
-            <TextBlock TextWrapping="Wrap"><Run Text="Папка назначения: "/><Run Text="{Binding FolderName}"/><Run Text=". Перетащите файлы или папку в окно. Для папки создаётся одна ссылка."/></TextBlock>
+            <TextBlock TextWrapping="Wrap"><Run Text="{DynamicResource Text7}"/><Run Text="{Binding FolderName}"/><Run Text="{DynamicResource Text8}"/></TextBlock>
             <TextBlock Text="{Binding TotalLabel}" Margin="0,12,0,5"/>
-            <ProgressBar Value="{Binding TotalProgress}" Maximum="100" Height="6" AutomationProperties.Name="Общий прогресс подборки"/>
+            <ProgressBar Value="{Binding TotalProgress}" Maximum="100" Height="6" AutomationProperties.Name="{DynamicResource Text9}"/>
             <TextBlock Text="{Binding TotalDetail}" TextWrapping="Wrap" FontSize="12" Margin="0,5,0,0"/>
           </StackPanel>
           <DataGrid Grid.Row="2" ItemsSource="{Binding Jobs}" SelectedItem="{Binding SelectedJob}" AutoGenerateColumns="False"
                     IsReadOnly="True" SelectionMode="Single" CanUserAddRows="False" EnableRowVirtualization="True">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="Файл или папка" Binding="{Binding Name}" Width="*"/>
-              <DataGridTextColumn Header="Состояние" Binding="{Binding Status}" Width="190"/>
-              <DataGridTemplateColumn Header="Загрузка" Width="260"><DataGridTemplateColumn.CellTemplate><DataTemplate>
+              <DataGridTextColumn Header="{DynamicResource Text10}" Binding="{Binding Name}" Width="*"/>
+              <DataGridTextColumn Header="{DynamicResource Text11}" Binding="{Binding Status}" Width="190"/>
+              <DataGridTemplateColumn Header="{DynamicResource Text12}" Width="260"><DataGridTemplateColumn.CellTemplate><DataTemplate>
                 <StackPanel Margin="8"><ProgressBar Value="{Binding Progress}" Height="5" Maximum="100"/>
                   <TextBlock Text="{Binding Bytes}" FontSize="11" Margin="0,4,0,0"/>
                   <TextBlock Text="{Binding TransferDetails}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/></StackPanel>
@@ -39,58 +39,64 @@
           <StackPanel Grid.Row="3" Margin="0,14,0,0">
             <TextBlock Text="{Binding SelectedJob.Message}" Margin="0,0,0,8"/>
             <WrapPanel>
-              <Button Content="Продолжить" Command="{Binding ResumeCommand}"/>
-              <Button Content="Скопировать ссылку" Command="{Binding CopyLinkCommand}"/>
-              <Button Content="Новая ссылка" Command="{Binding NewLinkCommand}"/>
-              <Button Content="Отозвать ссылку" Command="{Binding RevokeLinkCommand}"/>
-              <Button Content="Отменить / убрать" Command="{Binding RemoveCommand}"/>
+              <Button Content="{DynamicResource Text13}" Command="{Binding ResumeCommand}"/>
+              <Button Content="{DynamicResource Text14}" Command="{Binding CopyLinkCommand}"/>
+              <Button Content="{DynamicResource Text15}" Command="{Binding NewLinkCommand}"/>
+              <Button Content="{DynamicResource Text16}" Command="{Binding RevokeLinkCommand}"/>
+              <Button Content="{DynamicResource Text17}" Command="{Binding RemoveCommand}"/>
             </WrapPanel>
           </StackPanel>
         </Grid>
       </TabItem>
-      <TabItem Header="Настройки">
+      <TabItem Header="{DynamicResource Text18}">
         <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="20" MaxWidth="720" HorizontalAlignment="Left">
-          <TextBlock Text="Подключение" FontSize="20" FontWeight="SemiBold"/>
-          <TextBlock Text="Адрес сервера (HTTPS)" Margin="0,12,0,0"/>
+          <TextBlock Text="{DynamicResource AppLanguage}" FontSize="20" FontWeight="SemiBold"/>
+          <ComboBox x:Name="LanguagePicker" SelectedValue="{Binding SelectedLanguage}" SelectedValuePath="Tag" Width="220" HorizontalAlignment="Left" Margin="0,8,0,8">
+            <ComboBoxItem Content="English" Tag="en"/>
+            <ComboBoxItem Content="Русский" Tag="ru"/>
+          </ComboBox>
+          <TextBlock Text="{DynamicResource LanguageSaved}" Foreground="Gray" Margin="0,0,0,16"/>
+          <TextBlock Text="{DynamicResource Text19}" FontSize="20" FontWeight="SemiBold"/>
+          <TextBlock Text="{DynamicResource Text20}" Margin="0,12,0,0"/>
           <TextBox Text="{Binding ServerInput, UpdateSourceTrigger=PropertyChanged}" MinWidth="560"/>
-          <WrapPanel><Button Content="Подключить через браузер" Command="{Binding ConnectCommand}"/>
-            <Button Content="Отмена подключения" Command="{Binding ConnectCancelCommand}"/>
-            <Button Content="Отключить компьютер" Command="{Binding DisconnectCommand}"/>
-            <Button Content="Открыть подтверждение" Command="{Binding OpenPairingCommand}"/></WrapPanel>
-          <TextBlock Text="Ссылки" FontSize="20" FontWeight="SemiBold" Margin="0,16,0,8"/>
-          <TextBlock Text="Срок ссылки, дней (1–365)"/>
+          <WrapPanel><Button Content="{DynamicResource Text21}" Command="{Binding ConnectCommand}"/>
+            <Button Content="{DynamicResource Text22}" Command="{Binding ConnectCancelCommand}"/>
+            <Button Content="{DynamicResource Text23}" Command="{Binding DisconnectCommand}"/>
+            <Button Content="{DynamicResource Text24}" Command="{Binding OpenPairingCommand}"/></WrapPanel>
+          <TextBlock Text="{DynamicResource Text25}" FontSize="20" FontWeight="SemiBold" Margin="0,16,0,8"/>
+          <TextBlock Text="{DynamicResource Text26}"/>
           <TextBox Text="{Binding Days, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" Width="100" HorizontalAlignment="Left"/>
-          <CheckBox Content="Без срока действия" IsChecked="{Binding Never}"/>
-          <TextBlock Text="Пароль ссылки (необязательно, 12–256 байт UTF-8)"/>
+          <CheckBox Content="{DynamicResource Text27}" IsChecked="{Binding Never}"/>
+          <TextBlock Text="{DynamicResource Text28}"/>
           <PasswordBox x:Name="LinkPasswordBox" PasswordChanged="OnPasswordChanged" Padding="8,6" Margin="0,4,0,12"/>
-          <CheckBox Content="Загружать из Проводника без открытия окна" IsChecked="{Binding SilentExplorerUploads}"/>
-          <CheckBox Content="Уведомлять о загрузке и копировании ссылок" IsChecked="{Binding NotifyUploads}"/>
-          <Button Content="Сохранить настройки" Command="{Binding SaveOptionsCommand}" HorizontalAlignment="Left"/>
-          <TextBlock Text="Папка назначения" FontSize="20" FontWeight="SemiBold" Margin="0,16,0,8"/>
-          <WrapPanel><Button Content="Доступные папки" Command="{Binding BrowseFoldersCommand}"/>
-            <Button Content="Назад" Command="{Binding FolderBackCommand}"/>
-            <Button Content="Открыть папку" Command="{Binding EnterFolderCommand}"/>
-            <Button Content="Выбрать папку" Command="{Binding SelectFolderCommand}"/></WrapPanel>
+          <CheckBox Content="{DynamicResource Text29}" IsChecked="{Binding SilentExplorerUploads}"/>
+          <CheckBox Content="{DynamicResource Text30}" IsChecked="{Binding NotifyUploads}"/>
+          <Button Content="{DynamicResource Text31}" Command="{Binding SaveOptionsCommand}" HorizontalAlignment="Left"/>
+          <TextBlock Text="{DynamicResource Text32}" FontSize="20" FontWeight="SemiBold" Margin="0,16,0,8"/>
+          <WrapPanel><Button Content="{DynamicResource Text33}" Command="{Binding BrowseFoldersCommand}"/>
+            <Button Content="{DynamicResource Text34}" Command="{Binding FolderBackCommand}"/>
+            <Button Content="{DynamicResource Text35}" Command="{Binding EnterFolderCommand}"/>
+            <Button Content="{DynamicResource Text36}" Command="{Binding SelectFolderCommand}"/></WrapPanel>
           <ListBox ItemsSource="{Binding Folders}" SelectedItem="{Binding SelectedFolder}" DisplayMemberPath="Name" Height="130"/>
-          <TextBlock Text="Для загрузки и создания ссылки нужны права управляющего папкой. Закрытие окна оставляет ShareFile в трее; выход доступен в меню значка." Foreground="Gray" Margin="0,12,0,12"/>
+          <TextBlock Text="{DynamicResource Text37}" Foreground="Gray" Margin="0,12,0,12"/>
         </StackPanel></ScrollViewer>
       </TabItem>
-      <TabItem Header="История ссылок">
+      <TabItem Header="{DynamicResource Text38}">
         <Grid Margin="16">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-          <TextBox Text="{Binding HistorySearch, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Поиск по имени файла или папки" ToolTip="Найти файл или папку в истории"/>
-          <TextBlock Grid.Row="1" Margin="0,8,0,12" TextWrapping="Wrap" Foreground="Gray" Text="История хранит до 200 ссылок. Показаны ссылки текущего аккаунта. Ссылки защищены Windows Credential Manager. Очистка очереди сохраняет историю."/>
+          <TextBox Text="{Binding HistorySearch, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Text39}" ToolTip="{DynamicResource Text40}"/>
+          <TextBlock Grid.Row="1" Margin="0,8,0,12" TextWrapping="Wrap" Foreground="Gray" Text="{DynamicResource Text41}"/>
           <DataGrid Grid.Row="2" ItemsSource="{Binding HistoryRows}" SelectedItem="{Binding SelectedHistory}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" CanUserAddRows="False">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="Файл или папка" Binding="{Binding Name}" Width="*"/>
-              <DataGridTextColumn Header="Создана" Binding="{Binding CreatedLabel}" Width="150"/>
-              <DataGridTextColumn Header="Состояние" Binding="{Binding Status}" Width="190"/>
+              <DataGridTextColumn Header="{DynamicResource Text42}" Binding="{Binding Name}" Width="*"/>
+              <DataGridTextColumn Header="{DynamicResource Text43}" Binding="{Binding CreatedLabel}" Width="150"/>
+              <DataGridTextColumn Header="{DynamicResource Text44}" Binding="{Binding Status}" Width="190"/>
             </DataGrid.Columns>
           </DataGrid>
           <WrapPanel Grid.Row="3" Margin="0,12,0,0">
-            <Button Content="Копировать ссылку" Command="{Binding CopyHistoryCommand}"/>
-            <Button Content="Открыть ссылку" Command="{Binding OpenHistoryCommand}"/>
-            <Button Content="Отозвать ссылку" Command="{Binding RevokeHistoryCommand}"/>
+            <Button Content="{DynamicResource Text45}" Command="{Binding CopyHistoryCommand}"/>
+            <Button Content="{DynamicResource Text46}" Command="{Binding OpenHistoryCommand}"/>
+            <Button Content="{DynamicResource Text47}" Command="{Binding RevokeHistoryCommand}"/>
           </WrapPanel>
         </Grid>
       </TabItem>

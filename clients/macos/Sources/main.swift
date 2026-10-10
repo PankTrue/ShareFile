@@ -8,6 +8,8 @@ import SwiftUI
     private var pendingFinderFiles: [URL] = []
     private var connectionRestored = false
     private var notifications: UploadNotifications!
+    private var localizedMenuItems: [(NSMenuItem, String)] = []
+    private var localizedMenus: [(NSMenu, String)] = []
     private var clipboardHotKey: ClipboardHotKey?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -45,37 +47,50 @@ import SwiftUI
         let main = NSMenu()
         let appItem = NSMenuItem(); main.addItem(appItem)
         let appMenu = NSMenu(); appItem.submenu = appMenu
-        appMenu.addItem(withTitle: "О ShareFile", action: #selector(about), keyEquivalent: "")
+        appMenu.addItem(withTitle: L("О ShareFile"), action: #selector(about), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "История ссылок…", action: #selector(showHistory), keyEquivalent: "y")
-        appMenu.addItem(withTitle: "Настройки…", action: #selector(settings), keyEquivalent: ",")
-        let servicesItem = NSMenuItem(title: "Службы", action: nil, keyEquivalent: "")
+        appMenu.addItem(withTitle: L("История ссылок…"), action: #selector(showHistory), keyEquivalent: "y")
+        appMenu.addItem(withTitle: L("Настройки…"), action: #selector(settings), keyEquivalent: ",")
+        let servicesItem = NSMenuItem(title: L("Службы"), action: nil, keyEquivalent: "")
         let services = NSMenu(); servicesItem.submenu = services; appMenu.addItem(servicesItem); NSApp.servicesMenu = services
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Завершить ShareFile", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        let editItem = NSMenuItem(); main.addItem(editItem)
-        let edit = NSMenu(title: "Правка"); editItem.submenu = edit
-        edit.addItem(withTitle: "Вырезать", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        edit.addItem(withTitle: "Копировать", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        edit.addItem(withTitle: "Вставить", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        edit.addItem(withTitle: "Выбрать всё", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        appMenu.addItem(withTitle: L("Завершить ShareFile"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let editItem = NSMenuItem(title: L("Правка"), action: nil, keyEquivalent: ""); main.addItem(editItem)
+        let edit = NSMenu(title: L("Правка")); editItem.submenu = edit
+        edit.addItem(withTitle: L("Вырезать"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: L("Копировать"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: L("Вставить"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: L("Выбрать всё"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         NSApp.mainMenu = main
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = NSImage(systemSymbolName: "arrow.up.doc", accessibilityDescription: "ShareFile")
         let menu = NSMenu()
-        menu.addItem(withTitle: "Открыть ShareFile", action: #selector(showWindow), keyEquivalent: "")
-        menu.addItem(withTitle: "История ссылок…", action: #selector(showHistory), keyEquivalent: "")
-        let recent = NSMenuItem(title: "Недавние ссылки", action: nil, keyEquivalent: "")
+        menu.addItem(withTitle: L("Открыть ShareFile"), action: #selector(showWindow), keyEquivalent: "")
+        menu.addItem(withTitle: L("История ссылок…"), action: #selector(showHistory), keyEquivalent: "")
+        let recent = NSMenuItem(title: L("Недавние ссылки"), action: nil, keyEquivalent: "")
         let recentMenu = NSMenu(); recentMenu.delegate = self; recent.submenu = recentMenu; menu.addItem(recent)
-        menu.addItem(withTitle: "Настройки…", action: #selector(settings), keyEquivalent: "")
-        menu.addItem(withTitle: "Загрузить и поделиться…", action: #selector(pickFiles), keyEquivalent: "")
-        menu.addItem(withTitle: "Из буфера обмена (⌘⇧U)", action: #selector(uploadClipboard), keyEquivalent: "")
-        menu.addItem(withTitle: "Приостановить загрузки", action: #selector(pauseAll), keyEquivalent: "")
+        menu.addItem(withTitle: L("Настройки…"), action: #selector(settings), keyEquivalent: "")
+        menu.addItem(withTitle: L("Загрузить и поделиться…"), action: #selector(pickFiles), keyEquivalent: "")
+        menu.addItem(withTitle: L("Из буфера обмена (⌘⇧U)"), action: #selector(uploadClipboard), keyEquivalent: "")
+        menu.addItem(withTitle: L("Приостановить загрузки"), action: #selector(pauseAll), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Завершить", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: L("Завершить"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         for item in menu.items { item.target = self }
         menu.items.last?.target = NSApp
         statusItem.menu = menu
+        func collect(_ menu: NSMenu) {
+            localizedMenus.append((menu, menu.title))
+            for item in menu.items {
+                localizedMenuItems.append((item, item.title))
+                if let submenu = item.submenu { collect(submenu) }
+            }
+        }
+        collect(main); collect(menu)
+        model.onLanguageChange = { [weak self] in
+            guard let self else { return }
+            for (item, title) in self.localizedMenuItems { item.title = L(title) }
+            for (menu, title) in self.localizedMenus { menu.title = L(title) }
+        }
         do { clipboardHotKey = try ClipboardHotKey { [weak self] in self?.uploadClipboard() } }
         catch { model.notice = error.localizedDescription }
         NSApp.servicesProvider = self
@@ -103,7 +118,7 @@ import SwiftUI
             let item = NSMenuItem(title: entry.name, action: nil, keyEquivalent: "")
             let submenu = NSMenu(); submenu.autoenablesItems = false
             let status = NSMenuItem(title: entry.label, action: nil, keyEquivalent: ""); status.isEnabled = false; submenu.addItem(status)
-            for (title, action) in [("Копировать ссылку", #selector(copyRecent(_:))), ("Открыть ссылку", #selector(openRecent(_:))), ("Отозвать ссылку", #selector(revokeRecent(_:)))] {
+            for (title, action) in [(L("Копировать ссылку"), #selector(copyRecent(_:))), (L("Открыть ссылку"), #selector(openRecent(_:))), (L("Отозвать ссылку"), #selector(revokeRecent(_:)))] {
                 let command = NSMenuItem(title: title, action: action, keyEquivalent: "")
                 command.target = self; command.representedObject = entry
                 command.isEnabled = action == #selector(revokeRecent(_:)) ? model.canRevokeHistory(entry) : entry.active
@@ -111,9 +126,9 @@ import SwiftUI
             }
             item.submenu = submenu; menu.addItem(item)
         }
-        if menu.items.isEmpty { let empty = NSMenuItem(title: "История пока пуста", action: nil, keyEquivalent: ""); empty.isEnabled = false; menu.addItem(empty) }
+        if menu.items.isEmpty { let empty = NSMenuItem(title: L("История пока пуста"), action: nil, keyEquivalent: ""); empty.isEnabled = false; menu.addItem(empty) }
         menu.addItem(.separator())
-        let all = NSMenuItem(title: "Вся история…", action: #selector(showHistory), keyEquivalent: ""); all.target = self; menu.addItem(all)
+        let all = NSMenuItem(title: L("Вся история…"), action: #selector(showHistory), keyEquivalent: ""); all.target = self; menu.addItem(all)
     }
     @objc func copyRecent(_ sender: NSMenuItem) { if let entry = sender.representedObject as? SentLink { model.copyHistory(entry) } }
     @objc func openRecent(_ sender: NSMenuItem) { if let entry = sender.representedObject as? SentLink { model.openHistory(entry) } }
@@ -127,12 +142,12 @@ import SwiftUI
     }
     @objc func pauseAll() { model.pauseAll() }
     @objc func about() {
-        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "ShareFile", .applicationVersion: "0.1.0", .credits: NSAttributedString(string: "Личное хранилище на Keenetic\nmacOS 13+ · Apple Silicon / Intel")])
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "ShareFile", .applicationVersion: "0.1.0", .credits: NSAttributedString(string: L("Личное хранилище на Keenetic\nmacOS 13+ · Apple Silicon / Intel"))])
     }
     // The service returns as soon as files are queued; Finder never waits for network transfers.
     @objc func uploadAndShare(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
         let files = Self.fileURLs(pasteboard)
-        guard !files.isEmpty else { error.pointee = "Не удалось получить выбранные файлы"; return }
+        guard !files.isEmpty else { error.pointee = L("Не удалось получить выбранные файлы") as NSString; return }
         receiveFinderFiles(files)
     }
     nonisolated static func fileURLs(_ pasteboard: NSPasteboard) -> [URL] {
@@ -166,6 +181,15 @@ import SwiftUI
             delegate.window.close()
             NSApp.servicesProvider = nil
         }
+        model.setLanguage("ru")
+        guard NSApp.mainMenu?.items[1].title == "Правка", NSApp.mainMenu?.items[1].submenu?.title == "Правка",
+              delegate.statusItem.menu?.items.first?.title == "Открыть ShareFile" else {
+            throw AppFailure(message: "Native menus did not switch to Russian")
+        }
+        model.setLanguage("en")
+        guard NSApp.mainMenu?.items[1].title == "Edit", delegate.statusItem.menu?.items.first?.title == "Open ShareFile" else {
+            throw AppFailure(message: "Native menus did not switch back to English")
+        }
         var error: NSString?
         delegate.uploadAndShare(pasteboard, userData: nil, error: &error)
         guard error == nil, !delegate.window.isVisible, !delegate.pendingFinderFiles.isEmpty else { throw AppFailure(message: "Finder cold launch opened a window or lost files during connection restore") }
@@ -176,12 +200,16 @@ import SwiftUI
     }
 }
 
+if CommandLine.arguments.contains("--localization-test") {
+    do { try MainActor.assumeIsolated { try verifyLocalization() }; print("PASS: English defaults, Russian switch, safe interpolation, legacy settings, persistence and drafts"); exit(0) }
+    catch { fputs("FAIL: \(error.localizedDescription)\n", stderr); exit(1) }
+}
 if CommandLine.arguments.contains("--progress-test") {
     do { try verifyTransferProgress(); print("PASS: transfer rate, stalled/resumed estimates, byte-weighted batches, paused ETA and empty files"); exit(0) }
     catch { fputs("FAIL: \(error.localizedDescription)\n", stderr); exit(1) }
 }
 if CommandLine.arguments.contains("--self-test") {
-    do { try verifyTransferProgress() }
+    do { try verifyTransferProgress(); try MainActor.assumeIsolated { try verifyLocalization() } }
     catch { fputs("FAIL: \(error.localizedDescription)\n", stderr); exit(1) }
     do {
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("ShareFile-self-test-" + UUID().uuidString))

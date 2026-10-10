@@ -1,4 +1,5 @@
 """Private stdin/stdout protocol. Credentials never enter command arguments."""
+from .localization import tr
 import json
 import selectors
 import subprocess
@@ -12,7 +13,7 @@ class ClientError(Exception):
 
 class Cancelled(ClientError):
     def __init__(self):
-        super().__init__("Операция приостановлена")
+        super().__init__(tr("Операция приостановлена"))
 
 
 class BridgeCall:
@@ -41,33 +42,33 @@ class BridgeCall:
                     if self.cancelled.is_set():
                         raise Cancelled()
                     if time.monotonic() > deadline:
-                        raise ClientError("Сервер не ответил вовремя. Попробуйте продолжить загрузку")
+                        raise ClientError(tr("Сервер не ответил вовремя. Попробуйте продолжить загрузку"))
                     if not selector.select(0.1):
                         continue
                     chunk = process.stdout.read1(65536)
                     if not chunk:
-                        raise ClientError("Ядро передачи завершилось без результата")
+                        raise ClientError(tr("Ядро передачи завершилось без результата"))
                     buffer += chunk
                     if len(buffer) > 16 << 20:
-                        raise ClientError("Слишком большой ответ ядра передачи")
+                        raise ClientError(tr("Слишком большой ответ ядра передачи"))
                     while b"\n" in buffer:
                         line, buffer = buffer.split(b"\n", 1)
                         try:
                             event = json.loads(line)
                         except (ValueError, UnicodeError):
-                            raise ClientError("Некорректный ответ ядра передачи") from None
+                            raise ClientError(tr("Некорректный ответ ядра передачи")) from None
                         if not isinstance(event, dict):
-                            raise ClientError("Некорректный ответ ядра передачи")
+                            raise ClientError(tr("Некорректный ответ ядра передачи"))
                         if event.get("type") == "progress":
                             progress({**event["job"], "transferred": event.get("transferred", 0)})
                             deadline = time.monotonic() + 16 * 60
                         elif event.get("type") in ("result", "error"):
                             final = event
                         else:
-                            raise ClientError("Неизвестный ответ ядра передачи")
+                            raise ClientError(tr("Неизвестный ответ ядра передачи"))
             process.wait(timeout=5)
             if final["type"] == "error":
-                raise ClientError(final.get("error", "Ошибка передачи"))
+                raise ClientError(tr(final.get("error", "Ошибка передачи")))
             return final.get("result")
         finally:
             if process.poll() is None:
@@ -84,7 +85,7 @@ class BridgeCall:
 
 def safe_message(error):
     if isinstance(error, ClientError):
-        return str(error)
+        return tr(str(error))
     if isinstance(error, OSError):
-        return "Не удалось прочитать файл или сохранить очередь. Проверьте доступ и свободное место"
-    return "Не удалось выполнить операцию. Проверьте подключение и попробуйте снова"
+        return tr("Не удалось прочитать файл или сохранить очередь. Проверьте доступ и свободное место")
+    return tr("Не удалось выполнить операцию. Проверьте подключение и попробуйте снова")

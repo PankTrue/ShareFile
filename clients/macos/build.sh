@@ -16,6 +16,7 @@ trap 'rm -rf "$STAGE_DIR"' EXIT
 APP_DIR="$STAGE_DIR/ShareFile.app"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$MAC_DIR/Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
+cp "$ROOT_DIR/clients/localization/en.json" "$APP_DIR/Contents/Resources/en.json"
 for ARCH in arm64 x86_64; do
     GO_ARCH="$ARCH"
     if [ "$ARCH" = x86_64 ]; then GO_ARCH=amd64; fi

@@ -14,14 +14,14 @@ public sealed class ClipboardImages(string directory)
     {
         if (png.Length is < 33 or > MaxBytes || !png.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) ||
             !png.AsSpan(12, 4).SequenceEqual("IHDR"u8))
-            throw new ClientException("Изображение повреждено или слишком большое (максимум 32 МиБ)");
+            throw new ClientException(Localization.Text("Изображение повреждено или слишком большое (максимум 32 МиБ)"));
         var width = BinaryPrimitives.ReadUInt32BigEndian(png.AsSpan(16, 4));
         var height = BinaryPrimitives.ReadUInt32BigEndian(png.AsSpan(20, 4));
         if (width == 0 || height == 0 || (ulong)width * height > MaxPixels)
-            throw new ClientException("Изображение слишком большое (максимум 25 Мп)");
+            throw new ClientException(Localization.Text("Изображение слишком большое (максимум 25 Мп)"));
         Directory.CreateDirectory(_directory);
         if ((File.GetAttributes(_directory) & FileAttributes.ReparsePoint) != 0)
-            throw new ClientException("Не удалось открыть каталог изображений");
+            throw new ClientException(Localization.Text("Не удалось открыть каталог изображений"));
         var path = Path.Combine(_directory, $"Screenshot-{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.png");
         lock (_preparing) _preparing.Add(path);
         try

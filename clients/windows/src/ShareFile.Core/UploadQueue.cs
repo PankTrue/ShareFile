@@ -61,10 +61,11 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
         try
         {
             var state = await store.LoadAsync(ct).ConfigureAwait(false);
+            Localization.Language = state.Settings.Language;
             var jobs = state.Jobs.Select(j => j.Status switch
             {
                 UploadStatus.Queued or UploadStatus.Uploading or UploadStatus.Cancelling => j with { Status = UploadStatus.Paused },
-                UploadStatus.Sharing => j with { Status = UploadStatus.Uncertain, Message = "Сервер мог создать ссылку. Проверьте ссылки в Web UI перед созданием новой" },
+                UploadStatus.Sharing => j with { Status = UploadStatus.Uncertain, Message = Localization.Text("Сервер мог создать ссылку. Проверьте ссылки в Web UI перед созданием новой") },
                 _ => j
             }).ToArray();
             await CommitAsync(state with { Jobs = jobs }, ct).ConfigureAwait(false);
@@ -82,18 +83,18 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (!_loaded) throw new ClientException("Очередь ещё не загружена");
-            if (_running) throw new ClientException("Приостановите очередь перед сменой подключения");
+            if (!_loaded) throw new ClientException(Localization.Text("Очередь ещё не загружена"));
+            if (_running) throw new ClientException(Localization.Text("Приостановите очередь перед сменой подключения"));
             var settings = _state.Settings;
             if (_state.Jobs.Count != 0 && (settings.Origin != api.Origin || settings.Owner != session.User.Id))
-                throw new ClientException("Очередь принадлежит другому серверу или аккаунту. Завершите или отмените её перед сменой подключения");
+                throw new ClientException(Localization.Text("Очередь принадлежит другому серверу или аккаунту. Завершите или отмените её перед сменой подключения"));
             var resetFolder = settings.Origin != api.Origin || settings.Owner != session.User.Id || settings.Folder.Length == 0;
             settings = settings with { Origin = api.Origin, Owner = session.User.Id, Username = session.User.Username };
             if (resetFolder)
             {
                 var folders = await api.FoldersAsync(session.User.HomeId, ct).ConfigureAwait(false);
                 var uploads = folders.FirstOrDefault(n => n.Name == "Uploads" && n.Role >= 3);
-                settings = settings with { Folder = uploads?.Id ?? session.User.HomeId, FolderName = uploads?.Name ?? "Личная папка" };
+                settings = settings with { Folder = uploads?.Id ?? session.User.HomeId, FolderName = uploads?.Name ?? Localization.Text("Личная папка") };
             }
             await CommitAsync(_state with { Settings = settings }, ct).ConfigureAwait(false);
             _api = api;
@@ -113,15 +114,27 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
         Publish();
     }
 
+    public async Task SetLanguageAsync(string language, CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (!_loaded) throw new ClientException(Localization.Text("Очередь ещё не загружена"));
+            await CommitAsync(_state with { Settings = _state.Settings with { Language = Localization.Normalize(language) } }, ct).ConfigureAwait(false);
+        }
+        finally { _gate.Release(); }
+        Publish();
+    }
+
     public async Task ConfigureAsync(ClientSettings settings, string password, CancellationToken ct = default)
     {
         if (settings.Days is < 1 or > 365 || (password.Length != 0 && System.Text.Encoding.UTF8.GetByteCount(password) is < 12 or > 256))
-            throw new ClientException("Срок ссылки: 1–365 дней; пароль: 12–256 байт UTF-8");
+            throw new ClientException(Localization.Text("Срок ссылки: 1–365 дней; пароль: 12–256 байт UTF-8"));
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             if (settings.Origin != _state.Settings.Origin || settings.Owner != _state.Settings.Owner)
-                throw new ClientException("Подключение меняется только после подтверждения в браузере");
+                throw new ClientException(Localization.Text("Подключение меняется только после подтверждения в браузере"));
             if (settings.Folder.Length != 0) Protocol.RequireIdentifier(settings.Folder);
             await CommitAsync(_state with { Settings = settings }, ct).ConfigureAwait(false);
             _password = password;
@@ -133,7 +146,7 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
     public async Task AddAsync(IEnumerable<string> paths, CancellationToken ct = default)
     {
         var settings = _state.Settings;
-        if (_api is null) throw new ClientException("Сначала подключите хранилище");
+        if (_api is null) throw new ClientException(Localization.Text("Сначала подключите хранилище"));
         var batch = UploadEngine.NewId();
         var prepared = new List<UploadJob>();
         var errors = new List<string>();
@@ -151,8 +164,8 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
         try
         {
             if (_api is null || _state.Settings.Origin != settings.Origin || _state.Settings.Owner != settings.Owner)
-                throw new ClientException("Подключение изменилось во время подготовки файлов. Добавьте файлы заново");
-            if (_state.Jobs.Count + prepared.Count > 100) throw new ClientException("В очереди может быть не более 100 файлов или папок. Удалите завершённые записи");
+                throw new ClientException(Localization.Text("Подключение изменилось во время подготовки файлов. Добавьте файлы заново"));
+            if (_state.Jobs.Count + prepared.Count > 100) throw new ClientException(Localization.Text("В очереди может быть не более 100 файлов или папок. Удалите завершённые записи"));
             await CommitAsync(_state with { Jobs = _state.Jobs.Concat(prepared).ToArray() }, ct).ConfigureAwait(false);
             StartWorker();
         }
@@ -208,7 +221,7 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
                 catch (Exception error)
                 {
                     await UpdateAsync(job.Id, j => j.Status == UploadStatus.Sharing
-                        ? j with { Status = UploadStatus.Uncertain, Message = "Сервер мог создать ссылку. Проверьте ссылки в Web UI перед созданием новой" }
+                        ? j with { Status = UploadStatus.Uncertain, Message = Localization.Text("Сервер мог создать ссылку. Проверьте ссылки в Web UI перед созданием новой") }
                         : j with
                         {
                             Status = error is OperationCanceledException ? UploadStatus.Paused : UploadStatus.Error,
@@ -257,8 +270,8 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (_activeId == id) throw new ClientException("Дождитесь остановки текущей операции");
-            if (_api is null) throw new ClientException("Подключите хранилище");
+            if (_activeId == id) throw new ClientException(Localization.Text("Дождитесь остановки текущей операции"));
+            if (_api is null) throw new ClientException(Localization.Text("Подключите хранилище"));
             var job = _state.Jobs.Single(j => j.Id == id);
             if (job.Status is not (UploadStatus.Paused or UploadStatus.Error)) return;
             await CommitAsync(_state with { Jobs = _state.Jobs.Select(j => j.Id == id ? j with { Status = UploadStatus.Queued, Message = "" } : j).ToArray() }, ct).ConfigureAwait(false);
@@ -289,7 +302,7 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (_running) throw new ClientException("Приостановите очередь и дождитесь завершения операции");
+            if (_running) throw new ClientException(Localization.Text("Приостановите очередь и дождитесь завершения операции"));
             var job = _state.Jobs.Single(j => j.Id == id);
             if (job.Status is UploadStatus.Done or UploadStatus.Uploaded or UploadStatus.Uncertain)
             {
@@ -297,7 +310,7 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
             }
             else
             {
-                if (_api is null) throw new ClientException("Для отмены серверной загрузки нужно подключение");
+                if (_api is null) throw new ClientException(Localization.Text("Для отмены серверной загрузки нужно подключение"));
                 // Keep the checkpoint on disk until server cancellation is confirmed.
                 await engine.CancelAsync(_api, job, ct).ConfigureAwait(false);
                 await CommitAsync(_state with { Jobs = _state.Jobs.Where(j => j.Id != id).ToArray() }, ct).ConfigureAwait(false);
@@ -312,10 +325,10 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (_running || _api is null) throw new ClientException("Приостановите очередь перед созданием новой ссылки");
+            if (_running || _api is null) throw new ClientException(Localization.Text("Приостановите очередь перед созданием новой ссылки"));
             var job = _state.Jobs.Single(j => j.Id == id);
             if (job.Status is not (UploadStatus.Done or UploadStatus.Uploaded or UploadStatus.Uncertain))
-                throw new ClientException("Сначала завершите загрузку файла");
+                throw new ClientException(Localization.Text("Сначала завершите загрузку файла"));
             await CommitAsync(_state with { Jobs = _state.Jobs.Select(j => j.Id == id ? j with { Status = UploadStatus.Sharing } : j).ToArray() }, ct).ConfigureAwait(false);
             try
             {
@@ -334,7 +347,7 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
                     Jobs = _state.Jobs.Select(j => j.Id == id ? j with
                     {
                         Status = UploadStatus.Uncertain,
-                        Message = "Сервер мог создать ссылку. Проверьте ссылки в Web UI"
+                        Message = Localization.Text("Сервер мог создать ссылку. Проверьте ссылки в Web UI")
                     } : j).ToArray()
                 }, CancellationToken.None).ConfigureAwait(false);
                 throw;
@@ -351,14 +364,14 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
         try { await history.RecordAsync(_state.Settings, job, link).ConfigureAwait(false); return ""; }
         catch
         {
-            const string message = "Ссылка создана, но не сохранена в защищённой истории. Скопируйте её из очереди";
+            var message = Localization.Text("Ссылка создана, но не сохранена в защищённой истории. Скопируйте её из очереди");
             return message;
         }
     }
 
     private async Task RevokeShareAsync(string shareId, CancellationToken ct)
     {
-        if (_api is null) throw new ClientException("Подключите тот же сервер и аккаунт для отзыва ссылки");
+        if (_api is null) throw new ClientException(Localization.Text("Подключите тот же сервер и аккаунт для отзыва ссылки"));
         await _api.RevokeShareAsync(shareId, ct).ConfigureAwait(false);
         // Confirmed revocation invalidates in-memory links even if the local disk fails.
         _state = _state with { Jobs = _state.Jobs.Select(j => j.ShareId == shareId ? j with { Link = "", ShareId = "" } : j).ToArray() };
@@ -370,7 +383,7 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
                 if (history is not null) await history.MarkRevokedAsync(_state.Settings.Origin, _state.Settings.Owner, shareId).ConfigureAwait(false);
             }
         }
-        catch { throw new ClientException("Ссылка отозвана на сервере, но локальная история не сохранена. Проверьте Credential Manager и диск"); }
+        catch { throw new ClientException(Localization.Text("Ссылка отозвана на сервере, но локальная история не сохранена. Проверьте Credential Manager и диск")); }
     }
 
     public async Task RevokeLinkAsync(string id, CancellationToken ct = default)
@@ -379,7 +392,7 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
         try
         {
             var job = _state.Jobs.Single(j => j.Id == id);
-            if (job.ShareId.Length == 0) throw new ClientException("У этой записи нет известной ссылки");
+            if (job.ShareId.Length == 0) throw new ClientException(Localization.Text("У этой записи нет известной ссылки"));
             await RevokeShareAsync(job.ShareId, ct).ConfigureAwait(false);
         }
         finally { _gate.Release(); Publish(); }
@@ -392,7 +405,7 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
         {
             if (entry.Origin != _state.Settings.Origin || entry.Owner != _state.Settings.Owner || history is null ||
                 !history.Entries.Any(e => e.Account == entry.Account && !e.Revoked))
-                throw new ClientException("Для отзыва подключите тот же сервер и аккаунт");
+                throw new ClientException(Localization.Text("Для отзыва подключите тот же сервер и аккаунт"));
             await RevokeShareAsync(entry.ShareId, ct).ConfigureAwait(false);
         }
         finally { _gate.Release(); Publish(); }
@@ -400,10 +413,10 @@ public sealed class UploadQueue(IStateStore store, UploadEngine engine, LinkHist
     public static string SafeMessage(Exception error) => error switch
     {
         ClientException or ApiException => error.Message,
-        OperationCanceledException => "Операция отменена или сервер не ответил вовремя",
-        UnauthorizedAccessException => "Нет доступа к файлу или каталогу приложения",
-        IOException => "Не удалось прочитать файл или сохранить очередь. Проверьте диск",
-        _ => "Не удалось выполнить операцию. Проверьте подключение и попробуйте снова"
+        OperationCanceledException => Localization.Text("Операция отменена или сервер не ответил вовремя"),
+        UnauthorizedAccessException => Localization.Text("Нет доступа к файлу или каталогу приложения"),
+        IOException => Localization.Text("Не удалось прочитать файл или сохранить очередь. Проверьте диск"),
+        _ => Localization.Text("Не удалось выполнить операцию. Проверьте подключение и попробуйте снова")
     };
 
     public async ValueTask DisposeAsync()

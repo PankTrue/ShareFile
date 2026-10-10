@@ -138,7 +138,7 @@ class HistoryControllerTests(unittest.TestCase):
         item, = self.controller.snapshot()["jobs"]
         self.assertEqual(item["status"], "done")
         self.assertTrue(item["link"])
-        self.assertIn("не сохранена", item["message"])
+        self.assertIn("not saved", item["message"])
         self.assertEqual(len([r for r in FakeBridge.requests if r["operation"] == "share"]), 1)
         self.assertEqual(self.controller.snapshot()["history"], [])
 

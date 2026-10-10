@@ -1,6 +1,7 @@
+import { t, getLanguage } from './i18n';
 export function bytes(size: number) {
   if (!Number.isFinite(size) || size < 0) return '—';
-  if (size < 1024) return `${size} Б`;
+  if (size < 1024) return t('{0} Б', [size]);
   const units = ['КБ', 'МБ', 'ГБ', 'ТБ'];
   let value = size / 1024,
     index = 0;
@@ -8,14 +9,16 @@ export function bytes(size: number) {
     value /= 1024;
     index++;
   }
-  return `${new Intl.NumberFormat('ru', { maximumFractionDigits: 1 }).format(value)} ${units[index]}`;
+  return `${new Intl.NumberFormat(getLanguage(), { maximumFractionDigits: 1 }).format(value)} ${t(units[index])}`;
 }
 export function date(time?: number) {
   return time
-    ? new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short', year: 'numeric' }).format(
-        time * 1000,
-      )
-    : 'Без срока';
+    ? new Intl.DateTimeFormat(getLanguage(), {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }).format(time * 1000)
+    : t('Без срока');
 }
 export const roles = ['Нет доступа', 'Читатель', 'Редактор', 'Управляющий'];
 export function validName(name: string) {

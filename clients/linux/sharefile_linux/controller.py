@@ -1,3 +1,4 @@
+from .localization import tr, normalize, set_language
 import copy
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -23,6 +24,7 @@ class Controller:
         self.dispatch, self.changed, self.completed = dispatch, changed, completed
         self.open_browser, self.bridge_factory = open_browser, bridge_factory
         self.state = store.load()  # Corrupt state stops startup; it is never overwritten.
+        set_language(self.state["settings"]["language"])
         self.store.save(self.state)
         self.clipboard_images = ClipboardImages(store.path.parent / "clipboard")
         self.clipboard_images.reconcile(self.state["jobs"])
@@ -66,6 +68,9 @@ class Controller:
         snapshot = self.snapshot()
         self.dispatch(lambda: self.changed(snapshot))
 
+    def set_language(self, value):
+        self._commit(lambda state: state["settings"].update(language=normalize(value)))
+
     def set_notice(self, text):
         with self._lock:
             self.notice = text
@@ -77,6 +82,7 @@ class Controller:
             change(next_state)
             self.store.save(next_state)
             self.state = next_state
+            set_language(next_state["settings"]["language"])
             self.clipboard_images.reconcile(self.state["jobs"])
         self._publish()
 
@@ -143,33 +149,33 @@ class Controller:
         require_id(home)
         settings = copy.deepcopy(self.state["settings"])
         if self.state["jobs"] and (settings["origin"] != origin or settings["owner"] != owner):
-            raise ClientError("Очередь принадлежит другому серверу или аккаунту. Удалите записи перед сменой подключения")
+            raise ClientError(tr("Очередь принадлежит другому серверу или аккаунту. Удалите записи перед сменой подключения"))
         if settings["origin"] != origin or settings["owner"] != owner or not settings["folder"]:
             folders = self._request("folders", origin=origin, token=token, parent=home)
             uploads = next((folder for folder in folders if folder["name"] == "Uploads" and folder["effective_role"] >= 3), None)
             settings.update(folder=uploads["id"] if uploads else home,
-                            folder_name=uploads["name"] if uploads else "Личная папка")
+                            folder_name=uploads["name"] if uploads else tr("Личная папка"))
         settings.update(origin=origin, owner=owner, username=session["username"])
         password = self.credentials.read(origin, "password")
         if save_token:
             self.credentials.write(origin, token)
         self._commit(lambda state: state.update(settings=settings))
         self.token, self.password = token, password
-        self.notice = "Linux подключён. Можно загружать файлы и папки"
+        self.notice = tr("Linux подключён. Можно загружать файлы и папки")
 
     def connect(self, origin):
         self._pair_stop.clear()
 
         def pair():
             if self.token:
-                raise ClientError("Сначала отключите текущее подключение")
+                raise ClientError(tr("Сначала отключите текущее подключение"))
             normalized = self._request("normalize", origin=origin, token="", stop=self._pair_stop)
             if self.state["jobs"] and normalized != self.state["settings"]["origin"]:
-                raise ClientError("Очередь связана с текущим сервером. Удалите записи перед сменой адреса")
+                raise ClientError(tr("Очередь связана с текущим сервером. Удалите записи перед сменой адреса"))
             pairing = self._request("pair_start", origin=normalized, token="",
                                     name=("Linux · " + socket.gethostname())[:80], stop=self._pair_stop)
             self.pairing_url = pairing["verification_url"]
-            self.notice = "Подтвердите подключение в браузере"
+            self.notice = tr("Подтвердите подключение в браузере")
             self._publish()
             self.dispatch(lambda: self.open_browser(pairing["verification_url"]))
             try:
@@ -185,7 +191,7 @@ class Controller:
                         self._attach(normalized, result["token"], save_token=True)
                         self._add_pending()
                         return
-                raise ClientError("Время подтверждения истекло. Подключитесь заново")
+                raise ClientError(tr("Время подтверждения истекло. Подключитесь заново"))
             finally:
                 self.pairing_url = ""
         return self._submit(pair)
@@ -199,20 +205,20 @@ class Controller:
     def disconnect(self):
         def disconnect():
             if any(job["status"] == "queued" for job in self.state["jobs"]):
-                raise ClientError("Приостановите очередь перед отключением")
+                raise ClientError(tr("Приостановите очередь перед отключением"))
             self.credentials.delete(self.state["settings"]["origin"])
             self.token = self.password = ""
-            self.notice = "Подключение удалено с компьютера. Отозвать устройство можно в Web UI"
+            self.notice = tr("Подключение удалено с компьютера. Отозвать устройство можно в Web UI")
         self.pause_all()
         return self._submit(disconnect)
 
     def configure(self, days, never, password, silent, notify):
         def configure():
             if not 1 <= days <= 365 or (password and not 12 <= len(password.encode("utf-8")) <= 256):
-                raise ClientError("Срок ссылки: 1–365 дней; пароль: 12–256 байт UTF-8")
+                raise ClientError(tr("Срок ссылки: 1–365 дней; пароль: 12–256 байт UTF-8"))
             origin = self.state["settings"]["origin"]
             if password and not self.token:
-                raise ClientError("Сначала подключите хранилище")
+                raise ClientError(tr("Сначала подключите хранилище"))
             if origin:
                 if password:
                     self.credentials.write(origin, password, "password")
@@ -221,7 +227,7 @@ class Controller:
             self._commit(lambda state: state["settings"].update(days=days, never=never,
                          silent_uploads=silent, notify_uploads=notify))
             self.password = password
-            self.notice = "Настройки сохранены"
+            self.notice = tr("Настройки сохранены")
         return self._submit(configure)
 
     def folders(self, parent=""):
@@ -232,7 +238,7 @@ class Controller:
             require_id(identity)
             folder = self._request("folder", parent=identity)
             if folder["kind"] != "folder" or folder["effective_role"] < 3:
-                raise ClientError("Для загрузки и публичной ссылки нужны права управляющего")
+                raise ClientError(tr("Для загрузки и публичной ссылки нужны права управляющего"))
             self._commit(lambda state: state["settings"].update(folder=folder["id"], folder_name=folder["name"]))
         return self._submit(select)
 
@@ -247,7 +253,7 @@ class Controller:
     def add_clipboard(self, png):
         def add():
             if not self.token:
-                raise ClientError("Сначала подключите хранилище")
+                raise ClientError(tr("Сначала подключите хранилище"))
             source = self.clipboard_images.write(png)
             try:
                 self._add([source])
@@ -259,12 +265,12 @@ class Controller:
     def _add(self, paths):
         if not self.token:
             if len(self._pending_files) + len(paths) > 100:
-                raise ClientError("Можно выбрать не более 100 файлов или папок")
+                raise ClientError(tr("Можно выбрать не более 100 файлов или папок"))
             self._pending_files.extend(paths)
-            raise ClientError("Подключите хранилище. Выбранные файлы и папки добавятся после подтверждения")
+            raise ClientError(tr("Подключите хранилище. Выбранные файлы и папки добавятся после подтверждения"))
         settings = self.state["settings"]
         if len(self.state["jobs"]) + len(paths) > 100:
-            raise ClientError("В очереди может быть не более 100 файлов или папок. Удалите завершённые записи")
+            raise ClientError(tr("В очереди может быть не более 100 файлов или папок. Удалите завершённые записи"))
         batch, prepared, errors = secrets.token_urlsafe(32), [], []
         for path in paths:
             try:
@@ -279,7 +285,7 @@ class Controller:
         if prepared:
             self._commit(lambda state: state["jobs"].extend(prepared))
         if errors:
-            self.notice = f"Не добавлено объектов: {len(errors)}. " + errors[0]
+            self.notice = tr("Не добавлено объектов: {0}. ", len(errors)) + errors[0]
 
     def _pump(self):
         with self._lock:
@@ -359,7 +365,7 @@ class Controller:
             # while Secret Service may wait for the user to unlock their keyring.
             self.history.add(settings["origin"], settings["owner"], job, link)
         except Exception:
-            warning = "Ссылка создана, но не сохранена в защищённой истории. Скопируйте её из очереди"
+            warning = tr("Ссылка создана, но не сохранена в защищённой истории. Скопируйте её из очереди")
             self.notice = warning
         self._update(identity, status="done", link=link["url"], share_id=link["share"]["id"], message=warning)
 
@@ -403,7 +409,7 @@ class Controller:
     def resume(self, identity):
         def resume():
             if not self.token:
-                raise ClientError("Сначала подключите хранилище")
+                raise ClientError(tr("Сначала подключите хранилище"))
             if self._job(identity)["status"] in ("paused", "error"):
                 self._update(identity, status="queued", message="")
         return self._submit(resume)
@@ -413,13 +419,13 @@ class Controller:
             job = self._job(identity)
             if job["status"] not in ("done", "uploaded", "uncertain"):
                 if not self.token:
-                    raise ClientError("Для отмены серверной загрузки нужно подключение")
+                    raise ClientError(tr("Для отмены серверной загрузки нужно подключение"))
                 self._update(identity, status="cancelling")
                 try:
                     operation, parameters = self._transfer("cancel", job)
                     self._request(operation, **parameters)
                 except Exception:
-                    self._update(identity, status="paused", message="Отмена не подтверждена. Повторите отмену")
+                    self._update(identity, status="paused", message=tr("Отмена не подтверждена. Повторите отмену"))
                     raise
             self._commit(lambda state: state.update(jobs=[job for job in state["jobs"] if job["id"] != identity]))
         return self._submit(remove)
@@ -439,13 +445,13 @@ class Controller:
     def new_link(self, identity):
         def share():
             if not self.token or self._job(identity)["status"] not in ("done", "uploaded", "uncertain"):
-                raise ClientError("Подключите хранилище и завершите загрузку файла")
+                raise ClientError(tr("Подключите хранилище и завершите загрузку файла"))
             self._share(identity)
         return self._submit(share)
 
     def _revoke_share(self, share_id):
         if not self.token:
-            raise ClientError("Подключите тот же сервер и аккаунт для отзыва ссылки")
+            raise ClientError(tr("Подключите тот же сервер и аккаунт для отзыва ссылки"))
         self._request("revoke_share", share_id=share_id)
         settings = self.state["settings"]
         entry = next((entry for entry in self.history.entries if entry["origin"] == settings["origin"]
@@ -462,8 +468,8 @@ class Controller:
                 if entry:
                     self.history.revoked(entry)
         except Exception:
-            raise ClientError("Ссылка отозвана на сервере, но локальная история не сохранена. Проверьте Secret Service и диск") from None
-        self.notice = "Ссылка отозвана"
+            raise ClientError(tr("Ссылка отозвана на сервере, но локальная история не сохранена. Проверьте Secret Service и диск")) from None
+        self.notice = tr("Ссылка отозвана")
 
     def revoke(self, identity):
         return self._submit(lambda: self._revoke_share(self._job(identity)["share_id"]))
@@ -481,7 +487,7 @@ class Controller:
             settings = self.state["settings"]
             entry = self.history.find(settings["origin"], settings["owner"], identity)
             if entry["revoked"]:
-                raise ClientError("Ссылка уже отозвана")
+                raise ClientError(tr("Ссылка уже отозвана"))
             self._revoke_share(identity)
         return self._submit(revoke)
 

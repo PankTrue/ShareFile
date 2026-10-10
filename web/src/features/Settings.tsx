@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { api } from '../api';
@@ -113,9 +114,9 @@ function ConfigurationForm({
   function text(key: keyof ServerConfig, hint?: string, required = false) {
     return (
       <label>
-        {configLabels[key]}
+        {t(configLabels[key])}
         <input
-          aria-label={configLabels[key]}
+          aria-label={t(configLabels[key])}
           value={String(draft[key] ?? '')}
           required={required}
           autoComplete="off"
@@ -132,9 +133,9 @@ function ConfigurationForm({
   ) {
     return (
       <label>
-        {configLabels[key]}
+        {t(configLabels[key])}
         <input
-          aria-label={configLabels[key]}
+          aria-label={t(configLabels[key])}
           type="number"
           min={min}
           max={max}
@@ -184,64 +185,70 @@ function ConfigurationForm({
     >
       <fieldset disabled={busy}>
         <SettingsSection
-          title="Хранилище"
-          description="Выберите подключённый диск или укажите абсолютный путь на сервере."
+          title={t('Хранилище')}
+          description={t('Выберите подключённый диск или укажите абсолютный путь на сервере.')}
         >
           <label>
-            Подключённый диск
+            {t('Подключённый диск')}
             <select
-              aria-label="Подключённый диск"
+              aria-label={t('Подключённый диск')}
               value={mount?.path ?? ''}
               onChange={(e) => {
                 if (!e.target.value) return;
                 setDraft({ ...draft, data_dir: e.target.value.replace(/\/$/, '') + '/sharefile' });
               }}
             >
-              <option value="">Указать директорию вручную</option>
+              <option value="">{t('Указать директорию вручную')}</option>
               {volumes.map((v) => (
                 <option key={v.path} value={v.path} disabled={v.read_only}>
-                  {v.device} · {v.path}
-                  {v.current ? ' · используется' : ''}
-                  {v.read_only ? ' · только чтение' : ''}
+                  {t(v.device)} · {v.path}
+                  {v.current ? t(' · используется') : ''}
+                  {v.read_only ? t(' · только чтение') : ''}
                 </option>
               ))}
             </select>
           </label>
           {mount && (
             <p className="hint">
-              Свободно {bytes(mount.free_bytes)} из {bytes(mount.total_bytes)}
+              {t('Свободно')} {bytes(mount.free_bytes)} {t('из')} {bytes(mount.total_bytes)}
               {mount.filesystem ? ` · ${mount.filesystem}` : ''}
             </p>
           )}
           <Button icon="refresh" onClick={refreshVolumes}>
-            Обновить диски
+            {t('Обновить диски')}
           </Button>
           <ErrorBox message={volumesError} />
           <div className="form-grid">
             {text(
               'data_dir',
-              'Родительская директория должна существовать. Новая директория хранения — пустая или ещё не созданная.',
+              t(
+                'Родительская директория должна существовать. Новая директория хранения — пустая или ещё не созданная.',
+              ),
               true,
             )}
             {text(
               'volume_id',
-              'Проверяет, что подключено нужное хранилище. Новую метку можно задать при переносе в другую директорию.',
+              t(
+                'Проверяет, что подключено нужное хранилище. Новую метку можно задать при переносе в другую директорию.',
+              ),
               true,
             )}
             {number('reserve_bytes', 0, Number.MAX_SAFE_INTEGER)}
           </div>
-          <p className="hint">Сейчас используется: {snapshot.active.data_dir}</p>
+          <p className="hint">
+            {t('Сейчас используется:')} {snapshot.active.data_dir}
+          </p>
           {storageChanged && (
             <div className="info-box">
-              При применении файлы, база, аккаунты и незавершённые загрузки будут скопированы в
-              новую директорию. Исходная копия останется на старом диске. Дождитесь завершения
-              переноса перед отключением диска.
+              {t(
+                'При применении файлы, база, аккаунты и незавершённые загрузки будут скопированы в новую директорию. Исходная копия останется на старом диске. Дождитесь завершения переноса перед отключением диска.',
+              )}
             </div>
           )}
         </SettingsSection>
         <SettingsSection
-          title="Передача файлов"
-          description="Количество одновременных передач и размер одной части загрузки."
+          title={t('Передача файлов')}
+          description={t('Количество одновременных передач и размер одной части загрузки.')}
         >
           <div className="form-grid">
             {number('upload_slots', 1, 1024)}
@@ -250,19 +257,21 @@ function ConfigurationForm({
           </div>
         </SettingsSection>
         <SettingsSection
-          title="Адреса доступа"
-          description="Публичный URL используется для ссылок. Административный сервер доступен в локальной сети или VPN."
+          title={t('Адреса доступа')}
+          description={t(
+            'Публичный URL используется для ссылок. Административный сервер доступен в локальной сети или VPN.',
+          )}
         >
           <div className="form-grid">
-            {text('public_addr', 'IP:порт, например 127.0.0.1:8080', true)}
-            {text('public_url', 'HTTPS-адрес, по которому получатели открывают ссылки.', true)}
-            {text('admin_addr', 'IP:порт, например 192.168.1.1:8081', true)}
-            {text('admin_url', 'HTTPS-адрес интерфейса администрирования.', true)}
+            {text('public_addr', t('IP:порт, например 127.0.0.1:8080'), true)}
+            {text('public_url', t('HTTPS-адрес, по которому получатели открывают ссылки.'), true)}
+            {text('admin_addr', t('IP:порт, например 192.168.1.1:8081'), true)}
+            {text('admin_url', t('HTTPS-адрес интерфейса администрирования.'), true)}
           </div>
         </SettingsSection>
         <SettingsSection
-          title="TLS и локальная разработка"
-          description="Укажите пути к существующим файлам сертификата и ключа на сервере."
+          title={t('TLS и локальная разработка')}
+          description={t('Укажите пути к существующим файлам сертификата и ключа на сервере.')}
         >
           <div className="form-grid">
             {text('admin_cert', undefined, !draft.insecure_local)}
@@ -274,64 +283,69 @@ function ConfigurationForm({
               checked={draft.insecure_local}
               onChange={(e) => setDraft({ ...draft, insecure_local: e.target.checked })}
             />
-            HTTP для локальной разработки
+            {t('HTTP для локальной разработки')}
           </label>
           <p className="hint">
-            HTTP разрешён только для адресов 127.0.0.1 / ::1 и localhost. В локальной сети нужен
-            HTTPS.
+            {t(
+              'HTTP разрешён только для адресов 127.0.0.1 / ::1 и localhost. В локальной сети нужен HTTPS.',
+            )}
           </p>
         </SettingsSection>
         <SettingsSection
-          title="Источники импорта"
-          description="Абсолютные пути к существующим директориям, по одному на строку."
+          title={t('Источники импорта')}
+          description={t('Абсолютные пути к существующим директориям, по одному на строку.')}
         >
           <label>
-            Директории импорта
+            {t('Директории импорта')}
             <textarea
-              aria-label="Директории импорта"
+              aria-label={t('Директории импорта')}
               rows={4}
               value={draft.import_dirs.join('\n')}
               onChange={(e) => setDraft({ ...draft, import_dirs: e.target.value.split('\n') })}
             />
           </label>
           <p className="hint">
-            Очистите поле, чтобы отключить импорт. Файлы копируются в хранилище по отдельному
-            действию.
+            {t(
+              'Очистите поле, чтобы отключить импорт. Файлы копируются в хранилище по отдельному действию.',
+            )}
           </p>
         </SettingsSection>
         <SettingsSection
-          title="Web UI и журнал"
-          description="Пути на сервере. Пустой путь журнала направляет логи в stderr."
+          title={t('Web UI и журнал')}
+          description={t('Пути на сервере. Пустой путь журнала направляет логи в stderr.')}
         >
           <div className="form-grid">
             {text(
               'web_dir',
-              'Каталог собранного интерфейса с index.html. Пустой путь отключает Web UI.',
+              t('Каталог собранного интерфейса с index.html. Пустой путь отключает Web UI.'),
             )}
-            {text('log_file', 'Например /opt/var/log/sharefile/server.jsonl')}
+            {text('log_file', t('Например /opt/var/log/sharefile/server.jsonl'))}
           </div>
         </SettingsSection>
         <section className="settings-card settings-save">
-          <h2>Сохранение и применение</h2>
+          <h2>{t('Сохранение и применение')}</h2>
           <p className="hint">
-            Черновик сохраняется на сервере. При применении сервер завершит текущие запросы и
-            перезапустит слушатели. Передачи могут потребовать продолжения.
+            {t(
+              'Черновик сохраняется на сервере. При применении сервер завершит текущие запросы и перезапустит слушатели. Передачи могут потребовать продолжения.',
+            )}
           </p>
           {snapshot.pending && (
             <p className="hint">
-              Изменения:{' '}
-              {changes.map((k) => configLabels[k]).join(', ') || 'параметры совпадают с текущими'}.
+              {t('Изменения:')}{' '}
+              {changes.map((k) => t(configLabels[k])).join(', ') ||
+                t('параметры совпадают с текущими')}
+              .
             </p>
           )}
           <ErrorBox message={task.error || applyError || snapshot.last_error} />
           <div className="page-actions">
             <Button type="submit" variant="primary" disabled={!dirty}>
-              Сохранить черновик
+              {t('Сохранить черновик')}
             </Button>
             {snapshot.pending && (
               <>
                 <Button icon="refresh" disabled={dirty} onClick={() => setConfirm(true)}>
-                  Применить и перезапустить
+                  {t('Применить и перезапустить')}
                 </Button>
                 <Button
                   onClick={() =>
@@ -342,7 +356,7 @@ function ConfigurationForm({
                     })
                   }
                 >
-                  Удалить черновик
+                  {t('Удалить черновик')}
                 </Button>
               </>
             )}
@@ -351,27 +365,35 @@ function ConfigurationForm({
       </fieldset>
       {applying && (
         <section className="settings-card" role="status">
-          <h2>Применяем настройки…</h2>
+          <h2>{t('Применяем настройки…')}</h2>
           <p className="hint">
             {storageChanged
-              ? 'Копируем хранилище. Время зависит от объёма данных и скорости дисков.'
-              : 'Перезапускаем сервер.'}{' '}
-            Доступ появится после завершения.
+              ? t('Копируем хранилище. Время зависит от объёма данных и скорости дисков.')
+              : t('Перезапускаем сервер.')}{' '}
+            {t('Доступ появится после завершения.')}
           </p>
           {changedAddress ? (
             <a className="button primary" href={draft.admin_url + '/#/settings'}>
-              Открыть новый адрес
+              {t('Открыть новый адрес')}
             </a>
           ) : (
-            <p className="hint">Страница обновится автоматически после запуска.</p>
+            <p className="hint">{t('Страница обновится автоматически после запуска.')}</p>
           )}
         </section>
       )}
       {confirm && (
         <Confirm
-          title="Применить настройки сервера?"
-          description={`${storageChanged ? 'Хранилище будет скопировано в ' + draft.data_dir + '. Исходные данные сохранятся. ' : ''}Доступ временно приостановится.${changedAddress ? ' Затем откройте ' + draft.admin_url + '.' : ''}${!draft.web_dir ? ' Каталог Web UI пуст: интерфейс отключится.' : ''}`}
-          label="Применить"
+          title={t('Применить настройки сервера?')}
+          description={t('{0}Доступ временно приостановится.{1}{2}', [
+            storageChanged
+              ? t('Хранилище будет скопировано в ') +
+                draft.data_dir +
+                t('. Исходные данные сохранятся. ')
+              : '',
+            changedAddress ? t(' Затем откройте ') + draft.admin_url + '.' : '',
+            !draft.web_dir ? t(' Каталог Web UI пуст: интерфейс отключится.') : '',
+          ])}
+          label={t('Применить')}
           busy={task.busy}
           error={task.error}
           onClose={() => setConfirm(false)}

@@ -3,7 +3,6 @@ package httpapi
 import (
 	"bytes"
 	_ "embed"
-	"fmt"
 	"html/template"
 	"io"
 	"mime"
@@ -28,19 +27,8 @@ var shareHTML string
 var shareCSS string
 
 var sharePageTemplate = template.Must(template.New("share").Funcs(template.FuncMap{
-	"size": func(size int64) string {
-		if size < 1024 {
-			return fmt.Sprintf("%d Б", size)
-		}
-		value := float64(size)
-		for _, unit := range []string{"КиБ", "МиБ", "ГиБ", "ТиБ", "ПиБ", "ЭиБ"} {
-			value /= 1024
-			if value < 1024 {
-				return fmt.Sprintf("%.1f %s", value, unit)
-			}
-		}
-		return fmt.Sprintf("%d Б", size)
-	},
+	"size": shareSize,
+	"t":    shareText,
 }).Parse(shareHTML))
 
 type shareCrumb struct {
@@ -48,6 +36,7 @@ type shareCrumb struct {
 }
 
 type sharePageData struct {
+	Language, EnglishURL, RussianURL              string
 	Title, Base, BackURL, DownloadURL, ContentURL string
 	Node                                          metadata.Node
 	Trail                                         []shareCrumb
@@ -67,7 +56,16 @@ func shareStyles(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, shareCSS)
 }
 
-func renderShare(w http.ResponseWriter, status int, data sharePageData) {
+func renderShare(w http.ResponseWriter, r *http.Request, status int, data sharePageData) {
+	data.Language = preferredLanguage(r)
+	data.EnglishURL, data.RussianURL = languageURL(r, "en"), languageURL(r, "ru")
+	if value := r.URL.Query().Get("lang"); value == "en" || value == "ru" {
+		http.SetCookie(w, &http.Cookie{Name: "sf_language", Value: value, Path: "/", MaxAge: 31536000, SameSite: http.SameSiteLaxMode, Secure: r.TLS != nil})
+	}
+	if data.Locked {
+		data.Title = shareText(data.Language, data.Title)
+	}
+	w.Header().Set("Content-Language", data.Language)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 	if data.Locked {
@@ -221,7 +219,7 @@ func (a *App) guestView(w http.ResponseWriter, r *http.Request) {
 		fail(w, r, metadata.ErrUnavailable)
 		return
 	}
-	renderShare(w, http.StatusOK, data)
+	renderShare(w, r, http.StatusOK, data)
 }
 
 func (a *App) guestPreview(w http.ResponseWriter, r *http.Request) {

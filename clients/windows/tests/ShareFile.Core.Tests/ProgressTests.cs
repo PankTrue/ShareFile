@@ -30,9 +30,9 @@ public sealed class ProgressTests
         UploadJob[] jobs = [Job("old", "old", 9000, 9000, UploadStatus.Done), Job("small", "new", 100, 100, UploadStatus.Done), Job("large", "new", 900, 400, UploadStatus.Uploading)];
         var summary = TransferSummary.Create(TransferSummary.Selection(jobs), 100);
         Assert.Equal(50, summary.Percent); Assert.Equal(1000, summary.Size); Assert.Equal(1, summary.Completed);
-        Assert.Contains("Осталось ≈ 5 с", summary.Detail);
+        Assert.Contains("Remaining ≈ 5 s", summary.Detail);
         jobs[2] = jobs[2] with { Status = UploadStatus.Paused };
-        Assert.DoesNotContain("Осталось ≈", TransferSummary.Create(TransferSummary.Selection(jobs), 100).Detail);
+        Assert.DoesNotContain("Remaining ≈", TransferSummary.Create(TransferSummary.Selection(jobs), 100).Detail);
     }
     [Fact]
     public void EmptyFileWaitsForFinalization()
@@ -40,6 +40,6 @@ public sealed class ProgressTests
         var job = Job("empty", "", 0, 0, UploadStatus.Sharing);
         Assert.Equal(0, TransferSummary.Create([job], 0).Percent);
         Assert.Equal(100, TransferSummary.Create([job with { Status = UploadStatus.Done }], 0).Percent);
-        Assert.Equal("2 ч", TransferSummary.RemainingTime(7199));
+        Assert.Equal("2 h", TransferSummary.RemainingTime(7199));
     }
 }

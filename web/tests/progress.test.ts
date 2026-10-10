@@ -51,7 +51,7 @@ describe('Confirmed transfer progress', () => {
     job.status = 'complete';
     expect(progressSummary([job], 0).percent).toBe(100);
     expect(progressSummary([], 0).seconds).toBeNull();
-    expect(remainingTime(61)).toBe('2 мин');
-    expect(remainingTime(7199)).toBe('2 ч');
+    expect(remainingTime(61)).toBe('2 min');
+    expect(remainingTime(7199)).toBe('2 h');
   });
 });

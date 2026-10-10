@@ -33,7 +33,7 @@ public sealed class CredentialStore : ICredentialStore
     public void Write(string account, string value)
     {
         var bytes = Encoding.Unicode.GetBytes(value);
-        if (bytes.Length > 2560) throw new ClientException("Секрет превышает ограничение Windows Credential Manager");
+        if (bytes.Length > 2560) throw new ClientException(Localization.Text("Секрет превышает ограничение Windows Credential Manager"));
         var blob = Marshal.AllocHGlobal(bytes.Length);
         try
         {
@@ -60,7 +60,7 @@ public sealed class CredentialStore : ICredentialStore
     {
         if (!CredDelete(Target(account), 1, 0) && Marshal.GetLastWin32Error() != 1168) throw Failure();
     }
-    private static ClientException Failure() => new("Не удалось открыть Windows Credential Manager (" + Marshal.GetLastWin32Error() + ")");
+    private static ClientException Failure() => new(Localization.Text("Не удалось открыть Windows Credential Manager (") + Marshal.GetLastWin32Error() + ")");
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct Credential

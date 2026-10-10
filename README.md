@@ -114,6 +114,8 @@ The following features are implemented in the current backend, Web UI and deskto
 ### Desktop upload-and-share workflow
 
 - **Separate clients:** SwiftUI/AppKit on macOS, C#/.NET/WPF on Windows, and Python/GTK 3 on Linux. macOS/Linux reuse the Go transfer core; Windows has its own C# protocol/queue core.
+
+- **App language:** desktop clients default to English. Choose **English** or **Русский** in **Settings → App language**; the choice applies and saves immediately, including before connecting. See [desktop localization](docs/desktop-localization.md).
 - **One flow:** select or drop local files/folders, upload through a resumable queue, create sharing links and copy the completed group's links together, one per line. A directory produces one link for its entire tree.
 - **Defaults and settings:** personal `Uploads`, seven-day links and no password. Choose another accessible Manager folder, expiration or password in client settings; open the Web UI for broader file and permission management.
 - **Background integration:** Finder Service, Explorer **Send to**, and Nautilus/Nemo/Dolphin actions hand selections to the client. Background selections do not need an open transfer window; menu/tray actions reopen the queue and settings.

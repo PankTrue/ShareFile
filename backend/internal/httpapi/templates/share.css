@@ -70,3 +70,10 @@ input { width: 100%; min-width: 0; border: 1px solid #dfe6f0; border-radius: 9px
   .image-preview { padding: 12px; }
   .password-card { padding: 24px; margin: 24px auto; }
 }
+.language-switch { display: flex; align-items: center; gap: 10px; font-size: 13px; white-space: nowrap; }
+.language-switch a { color: #607086; padding: 6px 8px; border-radius: 6px; }
+.language-switch a[aria-current] { color: #2463eb; background: #eef4ff; font-weight: 600; }
+@media (max-width: 600px) {
+  .site-header { flex-wrap: wrap; }
+  .site-header > .badge { display: none; }
+}

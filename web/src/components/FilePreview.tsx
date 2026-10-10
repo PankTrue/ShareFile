@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { idPath } from '../api';
 import { useResource } from '../hooks';
@@ -47,34 +48,34 @@ export function FilePreview({
   return (
     <Modal
       title={node.name}
-      subtitle={`${bytes(node.size)} · Предпросмотр без публичной ссылки`}
+      subtitle={t('{0} · Предпросмотр без публичной ссылки', [bytes(node.size)])}
       onClose={onClose}
       className="file-preview"
     >
       <PreviewContent key={node.id} node={node} />
       <div className="preview-toolbar">
-        <div className="preview-navigation" aria-label="Галерея файлов">
+        <div className="preview-navigation" aria-label={t('Галерея файлов')}>
           <Button
             icon="previous"
             disabled={index === 0}
             onClick={() => setIndex(index - 1)}
-            aria-label="Предыдущий файл"
+            aria-label={t('Предыдущий файл')}
           />
           <span role="status" aria-live="polite">
-            {index + 1} из {files.length}
+            {index + 1} {t('из')} {files.length}
           </span>
           <Button
             icon="chevron"
             disabled={index === files.length - 1}
             onClick={() => setIndex(index + 1)}
-            aria-label="Следующий файл"
+            aria-label={t('Следующий файл')}
           />
         </div>
         <a className="button secondary" href={`/api/v1/nodes/${idPath(node.id)}/content`}>
-          <Icon name="download" /> Скачать файл
+          <Icon name="download" /> {t('Скачать файл')}
         </a>
       </div>
-      <p className="preview-hint">← → — файлы на этой странице · Esc — закрыть</p>
+      <p className="preview-hint">{t('← → — файлы на этой странице · Esc — закрыть')}</p>
     </Modal>
   );
 }
@@ -96,22 +97,31 @@ function PreviewContent({ node }: { node: FileNode }) {
   if (failed)
     return (
       <State
-        error="Не удалось открыть файл. Возможно, браузер не поддерживает этот формат или кодек, либо доступ к файлу изменился. Попробуйте снова или скачайте файл."
+        error={t(
+          'Не удалось открыть файл. Возможно, браузер не поддерживает этот формат или кодек, либо доступ к файлу изменился. Попробуйте снова или скачайте файл.',
+        )}
         retry={retry}
       />
     );
   if (value.kind === 'unsupported')
-    return <State empty icon="file" title="Предпросмотр недоступен" description={value.message} />;
+    return (
+      <State
+        empty
+        icon="file"
+        title={t('Предпросмотр недоступен')}
+        description={t(value.message)}
+      />
+    );
   if (value.kind === 'text')
     return (
       <>
         {value.truncated && (
           <p className="preview-notice" role="status">
-            Показаны первые 256 КиБ. Скачайте файл для просмотра целиком.
+            {t('Показаны первые 256 КиБ. Скачайте файл для просмотра целиком.')}
           </p>
         )}
-        <pre className="preview-text" tabIndex={0} aria-label={`Текст ${node.name}`}>
-          {value.text || 'Файл пуст.'}
+        <pre className="preview-text" tabIndex={0} aria-label={t('Текст {0}', [node.name])}>
+          {value.text || t('Файл пуст.')}
         </pre>
       </>
     );
@@ -119,7 +129,7 @@ function PreviewContent({ node }: { node: FileNode }) {
     <div className={`preview-stage preview-${value.kind}`} aria-busy={!loaded}>
       {!loaded && (
         <div className="preview-loading" role="status">
-          <span className="spinner" /> Открываем файл…
+          <span className="spinner" /> {t('Открываем файл…')}
         </div>
       )}
       {value.kind === 'image' && (
@@ -143,7 +153,7 @@ function PreviewContent({ node }: { node: FileNode }) {
             onError={() => setFailed(true)}
           />
           <p className="preview-hint">
-            Если браузер не показывает PDF, воспользуйтесь кнопкой «Скачать файл».
+            {t('Если браузер не показывает PDF, воспользуйтесь кнопкой «Скачать файл».')}
           </p>
         </>
       )}
@@ -187,8 +197,8 @@ function NativePlayer({
   }, [src]);
   const props = { controls: true, preload: 'metadata', src, onLoadedMetadata: onLoaded, onError };
   return kind === 'audio' ? (
-    <audio ref={audio} {...props} aria-label={`Аудио ${name}`} />
+    <audio ref={audio} {...props} aria-label={t('Аудио {0}', [name])} />
   ) : (
-    <video ref={video} {...props} playsInline aria-label={`Видео ${name}`} />
+    <video ref={video} {...props} playsInline aria-label={t('Видео {0}', [name])} />
   );
 }

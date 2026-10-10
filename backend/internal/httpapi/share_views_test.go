@@ -48,7 +48,7 @@ func TestPublicFolderPreviewNavigation(t *testing.T) {
 	page = request(t, h, "GET", base+"/nodes/"+nested.ID, nil, nil)
 	status(t, page, 200)
 	for _, node := range []string{text.ID, photo.ID} {
-		if !strings.Contains(page.Body.String(), base+"/nodes/"+node+"/view") || !strings.Contains(page.Body.String(), "aria-label=\"Скачать ") {
+		if !strings.Contains(page.Body.String(), base+"/nodes/"+node+"/view") || !strings.Contains(page.Body.String(), "aria-label=\"Download ") {
 			t.Fatal("file preview/download links missing")
 		}
 	}
@@ -57,7 +57,7 @@ func TestPublicFolderPreviewNavigation(t *testing.T) {
 	if !strings.Contains(page.Body.String(), "Привет, мир!") || !strings.Contains(page.Body.String(), "&lt;script&gt;") || strings.Contains(page.Body.String(), "<script>") {
 		t.Fatal("text must be displayed and HTML escaped")
 	}
-	if !strings.Contains(page.Body.String(), "Вернуться в папку") || strings.Contains(page.Body.String(), f.alice.HomeID) || strings.Contains(page.Body.String(), ">alice<") {
+	if !strings.Contains(page.Body.String(), "Back to folder") || strings.Contains(page.Body.String(), f.alice.HomeID) || strings.Contains(page.Body.String(), ">alice<") {
 		t.Fatal("breadcrumbs missing or disclose ancestors above the shared root")
 	}
 	if strings.Contains(page.Header().Get("Content-Security-Policy"), "unsafe-inline") || page.Header().Get("X-Robots-Tag") != "noindex, nofollow" {

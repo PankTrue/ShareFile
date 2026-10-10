@@ -1,7 +1,7 @@
 {{define "folderIcon"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>{{end}}
 {{define "fileIcon"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Zm0 0v6h6M8 13h8M8 17h5"/></svg>{{end}}
 <!doctype html>
-<html lang="ru">
+<html lang="{{.Language}}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -10,55 +10,55 @@
   <link rel="stylesheet" href="/share-assets/style.css">
 </head>
 <body>
-  <header class="site-header"><div class="brand"><span class="brand-mark">{{template "folderIcon"}}</span>ShareFile</div><span class="badge">Доступ по ссылке</span></header>
+  <header class="site-header"><div class="brand"><span class="brand-mark">{{template "folderIcon"}}</span>ShareFile</div><span class="badge">{{t $.Language "Доступ по ссылке"}}</span><nav class="language-switch" aria-label="{{t .Language "Язык"}}"><a href="{{.EnglishURL}}" lang="en" hreflang="en"{{if eq .Language "en"}} aria-current="true"{{end}}>English</a><a href="{{.RussianURL}}" lang="ru" hreflang="ru"{{if eq .Language "ru"}} aria-current="true"{{end}}>Русский</a></nav></header>
   <main>
     {{if .Locked}}
       <section class="card password-card">
         <span class="symbol">{{template "folderIcon"}}</span>
-        <h1>Пароль ссылки</h1>
-        <p class="muted">Введите пароль, который вам передал владелец.</p>
+        <h1>{{t $.Language "Пароль ссылки"}}</h1>
+        <p class="muted">{{t $.Language "Введите пароль, который вам передал владелец."}}</p>
         <form method="post" action="{{.Base}}/unlock">
-          <label>Пароль<input type="password" name="password" required maxlength="256" autocomplete="current-password" autofocus></label>
-          <button class="button primary" type="submit">Открыть</button>
+          <label>{{t $.Language "Пароль"}}<input type="password" name="password" required maxlength="256" autocomplete="current-password" autofocus></label>
+          <button class="button primary" type="submit">{{t $.Language "Открыть"}}</button>
         </form>
       </section>
     {{else}}
-      <nav class="breadcrumbs" aria-label="Путь в общей папке">
+      <nav class="breadcrumbs" aria-label="{{t $.Language "Путь в общей папке"}}">
         {{range .Trail}}{{if eq .ID $.Node.ID}}<span aria-current="page">{{.Name}}</span>{{else}}<a href="{{.URL}}">{{.Name}}</a><span aria-hidden="true">/</span>{{end}}{{end}}
       </nav>
       <div class="page-heading">
-        <div><p class="eyebrow">{{if eq .Node.Kind "folder"}}ОБЩАЯ ПАПКА{{else}}ПРЕДПРОСМОТР ФАЙЛА{{end}}</p><h1>{{.Title}}</h1><p class="muted">{{if eq .Node.Kind "folder"}}Открывайте вложенные папки, просматривайте фото и текст или скачивайте файлы.{{else}}{{size .Node.Size}}{{end}}</p></div>
-        {{if .DownloadURL}}<a class="button primary" href="{{.DownloadURL}}">{{if eq .Node.Kind "folder"}}Скачать всё (ZIP){{else}}Скачать файл{{end}}</a>{{end}}
+        <div><p class="eyebrow">{{if eq .Node.Kind "folder"}}{{t $.Language "ОБЩАЯ ПАПКА"}}{{else}}{{t $.Language "ПРЕДПРОСМОТР ФАЙЛА"}}{{end}}</p><h1>{{.Title}}</h1><p class="muted">{{if eq .Node.Kind "folder"}}{{t $.Language "Открывайте вложенные папки, просматривайте фото и текст или скачивайте файлы."}}{{else}}{{size .Language .Node.Size}}{{end}}</p></div>
+        {{if .DownloadURL}}<a class="button primary" href="{{.DownloadURL}}">{{if eq .Node.Kind "folder"}}{{t $.Language "Скачать всё (ZIP)"}}{{else}}{{t $.Language "Скачать файл"}}{{end}}</a>{{end}}
       </div>
-      {{if .BackURL}}<a class="back-link" href="{{.BackURL}}">← Вернуться в папку</a>{{end}}
+      {{if .BackURL}}<a class="back-link" href="{{.BackURL}}">← {{t $.Language "Вернуться в папку"}}</a>{{end}}
       {{if eq .Node.Kind "folder"}}
-        <section class="card file-list" aria-label="Содержимое папки">
-          <div class="list-heading"><span>Название</span><span>Размер</span></div>
+        <section class="card file-list" aria-label="{{t $.Language "Содержимое папки"}}">
+          <div class="list-heading"><span>{{t $.Language "Название"}}</span><span>{{t $.Language "Размер"}}</span></div>
           {{range .Nodes}}
             <div class="file-row">
               <a class="file-name" href="{{$.Base}}/nodes/{{.ID}}{{if eq .Kind "file"}}/view{{end}}">
                 <span class="symbol {{.Kind}}">{{if eq .Kind "folder"}}{{template "folderIcon"}}{{else}}{{template "fileIcon"}}{{end}}</span>
-                <span class="file-label"><strong>{{.Name}}</strong><small>{{if eq .Kind "folder"}}Папка{{else}}Открыть предпросмотр{{end}}</small></span>
+                <span class="file-label"><strong>{{.Name}}</strong><small>{{if eq .Kind "folder"}}{{t $.Language "Папка"}}{{else}}{{t $.Language "Открыть предпросмотр"}}{{end}}</small></span>
               </a>
-              <span class="file-size">{{if eq .Kind "file"}}{{size .Size}}{{else}}—{{end}}</span>
-              {{if eq .Kind "file"}}<a class="download-link" href="{{$.Base}}/nodes/{{.ID}}" aria-label="Скачать {{.Name}}">Скачать</a>{{else}}<span class="folder-arrow" aria-hidden="true">→</span>{{end}}
+              <span class="file-size">{{if eq .Kind "file"}}{{size $.Language .Size}}{{else}}—{{end}}</span>
+              {{if eq .Kind "file"}}<a class="download-link" href="{{$.Base}}/nodes/{{.ID}}" aria-label="{{t $.Language "Скачать"}} {{.Name}}">{{t $.Language "Скачать"}}</a>{{else}}<span class="folder-arrow" aria-hidden="true">→</span>{{end}}
             </div>
-          {{else}}<div class="empty-state">{{template "folderIcon"}}<h2>В этой папке пока нет файлов</h2><p class="muted">Новые файлы появятся здесь, когда владелец добавит их.</p></div>{{end}}
+          {{else}}<div class="empty-state">{{template "folderIcon"}}<h2>{{t $.Language "В этой папке пока нет файлов"}}</h2><p class="muted">{{t $.Language "Новые файлы появятся здесь, когда владелец добавит их."}}</p></div>{{end}}
         </section>
-        {{if or .Previous .Next}}<nav class="pager" aria-label="Страницы папки">{{if .Previous}}<a class="button" href="?limit={{.Limit}}&amp;offset={{.PreviousOffset}}">Назад</a>{{end}}{{if .Next}}<a class="button" href="?limit={{.Limit}}&amp;offset={{.NextOffset}}">Далее</a>{{end}}</nav>{{end}}
+        {{if or .Previous .Next}}<nav class="pager" aria-label="{{t $.Language "Страницы папки"}}">{{if .Previous}}<a class="button" href="?limit={{.Limit}}&amp;offset={{.PreviousOffset}}">{{t $.Language "Назад"}}</a>{{end}}{{if .Next}}<a class="button" href="?limit={{.Limit}}&amp;offset={{.NextOffset}}">{{t $.Language "Далее"}}</a>{{end}}</nav>{{end}}
       {{else}}
-        <section class="card preview" aria-label="Предпросмотр файла">
+        <section class="card preview" aria-label="{{t $.Language "Предпросмотр файла"}}">
           {{if eq .Preview.Kind "image"}}
             <div class="image-preview"><img src="{{.ContentURL}}" alt="{{.Title}}"></div>
           {{else if eq .Preview.Kind "text"}}
-            {{if .Preview.Truncated}}<p class="preview-notice">Показаны первые 256 КиБ текста. Скачайте файл, чтобы прочитать его полностью.</p>{{end}}
-            {{if .Preview.Text}}<pre class="text-preview">{{.Preview.Text}}</pre>{{else}}<div class="empty-state"><h2>Файл пуст</h2></div>{{end}}
+            {{if .Preview.Truncated}}<p class="preview-notice">{{t $.Language "Показаны первые 256 КиБ текста. Скачайте файл, чтобы прочитать его полностью."}}</p>{{end}}
+            {{if .Preview.Text}}<pre class="text-preview">{{.Preview.Text}}</pre>{{else}}<div class="empty-state"><h2>{{t $.Language "Файл пуст"}}</h2></div>{{end}}
           {{else}}
-            <div class="empty-state">{{template "fileIcon"}}<h2>Предпросмотр недоступен</h2><p class="muted">{{.Preview.Message}}</p><a class="button primary" href="{{.DownloadURL}}">Скачать файл</a></div>
+            <div class="empty-state">{{template "fileIcon"}}<h2>{{t $.Language "Предпросмотр недоступен"}}</h2><p class="muted">{{t .Language .Preview.Message}}</p><a class="button primary" href="{{.DownloadURL}}">{{t $.Language "Скачать файл"}}</a></div>
           {{end}}
         </section>
       {{end}}
-      <p class="page-note">Содержимое доступно только для просмотра и скачивания.</p>
+      <p class="page-note">{{t $.Language "Содержимое доступно только для просмотра и скачивания."}}</p>
     {{end}}
   </main>
 </body>

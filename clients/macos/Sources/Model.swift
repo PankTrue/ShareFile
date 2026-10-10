@@ -37,15 +37,15 @@ struct Upload: Codable, Identifiable {
     }
     var label: String {
         switch status {
-        case "queued": return "В очереди"
-        case "uploading": return "Загружается"
-        case "paused": return "На паузе"
-        case "uploaded": return "Сохранено в хранилище"
-        case "sharing": return "Создаётся ссылка"
-        case "uncertain": return "Проверьте ссылки в Web UI"
-        case "done": return "Готово"
-        case "cancelling": return "Отменяется"
-        default: return "Нужна ваша помощь"
+        case "queued": return L("В очереди")
+        case "uploading": return L("Загружается")
+        case "paused": return L("На паузе")
+        case "uploaded": return L("Сохранено в хранилище")
+        case "sharing": return L("Создаётся ссылка")
+        case "uncertain": return L("Проверьте ссылки в Web UI")
+        case "done": return L("Готово")
+        case "cancelling": return L("Отменяется")
+        default: return L("Нужна ваша помощь")
         }
     }
 }
@@ -68,11 +68,12 @@ struct Preferences: Codable {
     var never = false
     var silentFinderUploads = true
     var notifyUploads = true
+    var language = "en"
     var uploads: [Upload] = []
 
     enum CodingKeys: String, CodingKey {
         case origin, owner, username, folder, folderName, days, never, uploads
-        case silentFinderUploads, notifyUploads
+        case silentFinderUploads, notifyUploads, language
     }
     init(uploads: [Upload] = []) { self.uploads = uploads }
     init(from decoder: Decoder) throws {
@@ -87,16 +88,17 @@ struct Preferences: Codable {
         uploads = try values.decodeIfPresent([Upload].self, forKey: .uploads) ?? []
         silentFinderUploads = try values.decodeIfPresent(Bool.self, forKey: .silentFinderUploads) ?? true
         notifyUploads = try values.decodeIfPresent(Bool.self, forKey: .notifyUploads) ?? true
+        language = Localization.normalize(try values.decodeIfPresent(String.self, forKey: .language) ?? "en")
     }
 }
 
 struct UploadCompletion: Equatable {
     let names: [String]
     let copied: Bool
-    var title: String { "Загрузка завершена" }
+    var title: String { L("Загрузка завершена") }
     var body: String {
-        let files = names.count == 1 ? names[0] : "Загружено объектов: \(names.count)"
-        let result = copied ? (names.count == 1 ? "Ссылка скопирована" : "Ссылки скопированы") : "Не удалось скопировать ссылку. Откройте ShareFile"
+        let files = names.count == 1 ? names[0] : L("Загружено объектов: {0}", String(names.count))
+        let result = copied ? (names.count == 1 ? L("Ссылка скопирована") : L("Ссылки скопированы")) : L("Не удалось скопировать ссылку. Откройте ShareFile")
         return files + "\n" + result
     }
 }
@@ -139,6 +141,7 @@ struct UploadCompletion: Equatable {
     private var pendingImages = Set<String>()
     private var readableState = true
     private let writeClipboard: (String) -> Bool
+    var onLanguageChange: (() -> Void)?
     var onUploadCompletion: ((UploadCompletion) -> Void)?
     var onClipboardFailure: ((String) -> Void)?
     var connected: Bool { !token.isEmpty && !settings.owner.isEmpty }
@@ -151,34 +154,44 @@ struct UploadCompletion: Equatable {
         return NSPasteboard.general.setString($0, forType: .string)
     }) {
         self.stateURL = stateURL
+        let saved = (try? Data(contentsOf: stateURL)).flatMap { try? JSONDecoder().decode(Preferences.self, from: $0) }
+        settings = saved ?? Preferences()
+        Localization.language = saved?.language ?? "en"
         clipboardImages = ClipboardImages(directory: stateURL.deletingLastPathComponent().appendingPathComponent("clipboard", isDirectory: true))
         self.history = history ?? LinkHistory(path: stateURL.deletingLastPathComponent().appendingPathComponent("history.json"))
         notice = self.history.loadError
         self.writeClipboard = writeClipboard
-        if let data = try? Data(contentsOf: stateURL), let saved = try? JSONDecoder().decode(Preferences.self, from: data) {
+        if let saved {
             settings = saved
             for index in settings.uploads.indices {
                 switch settings.uploads[index].status {
                 case "queued", "uploading", "cancelling": settings.uploads[index].status = "paused"
-                case "sharing": settings.uploads[index].status = "uncertain"; settings.uploads[index].message = "Сервер мог создать ссылку. Проверьте её в Web UI перед созданием новой."
+                case "sharing": settings.uploads[index].status = "uncertain"; settings.uploads[index].message = L("Сервер мог создать ссылку. Проверьте её в Web UI перед созданием новой.")
                 default: break
                 }
             }
         } else if FileManager.default.fileExists(atPath: stateURL.path) {
             readableState = false
-            notice = "Не удалось прочитать очередь. Сохраните state.json перед восстановлением"
+            notice = L("Не удалось прочитать очередь. Сохраните state.json перед восстановлением")
         }
         serverInput = settings.origin
         if readableState { clipboardImages.reconcile(settings.uploads) }
     }
+    func setLanguage(_ value: String) {
+        settings.language = Localization.normalize(value)
+        Localization.language = settings.language
+        notice = L(notice)
+        save()
+        onLanguageChange?()
+    }
     func save() {
-        guard readableState else { notice = "Не удалось прочитать очередь. Сохраните state.json перед восстановлением"; return }
+        guard readableState else { notice = L("Не удалось прочитать очередь. Сохраните state.json перед восстановлением"); return }
         do {
             try FileManager.default.createDirectory(at: stateURL.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             try JSONEncoder().encode(settings).write(to: stateURL, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: stateURL.path)
             clipboardImages.reconcile(settings.uploads, pending: pendingImages)
-        } catch { notice = "Не удалось сохранить очередь. Проверьте свободное место на Mac" }
+        } catch { notice = L("Не удалось сохранить очередь. Проверьте свободное место на Mac") }
     }
     func request(_ operation: String, _ extra: [String: Any] = [:], call: BridgeCall = BridgeCall(), progress: @escaping @Sendable ([String: Any]) -> Void = { _ in }) async throws -> Any {
         try await call.run(["operation": operation, "origin": settings.origin, "token": token].merging(extra) { _, new in new }, progress: progress)
@@ -203,33 +216,33 @@ struct UploadCompletion: Equatable {
         } catch { token = ""; notice = error.localizedDescription }
     }
     private func validateSession() async throws {
-        guard let raw = try await request("session") as? [String: Any], let user = raw["user"] as? [String: Any], let owner = user["id"] as? String else { throw AppFailure(message: "Некорректный ответ сервера") }
+        guard let raw = try await request("session") as? [String: Any], let user = raw["user"] as? [String: Any], let owner = user["id"] as? String else { throw AppFailure(message: L("Некорректный ответ сервера")) }
         if !settings.owner.isEmpty && settings.owner != owner && !settings.uploads.isEmpty {
-            token = ""; throw AppFailure(message: "Очередь принадлежит другому аккаунту. Удалите завершённые записи и отмените незавершённые загрузки перед сменой аккаунта")
+            token = ""; throw AppFailure(message: L("Очередь принадлежит другому аккаунту. Удалите завершённые записи и отмените незавершённые загрузки перед сменой аккаунта"))
         }
         settings.owner = owner; settings.username = user["username"] as? String ?? ""
         if settings.folder.isEmpty, let home = user["home_id"] as? String {
             let nodes = try await request("folders", ["parent": home]) as? [[String: Any]] ?? []
             if let uploads = nodes.compactMap(Folder.init).first(where: { $0.name == "Uploads" && $0.role >= 3 }) {
                 settings.folder = uploads.id; settings.folderName = uploads.name
-            } else { settings.folder = home; settings.folderName = "Личная папка" }
+            } else { settings.folder = home; settings.folderName = L("Личная папка") }
         }
         save()
     }
     func connect() {
-        guard readableState else { notice = "Не удалось прочитать очередь. Сохраните state.json перед восстановлением"; return }
+        guard readableState else { notice = L("Не удалось прочитать очередь. Сохраните state.json перед восстановлением"); return }
         guard !busy else { return }
-        if connected { notice = "Сначала отключите текущее подключение"; return }
+        if connected { notice = L("Сначала отключите текущее подключение"); return }
         let old = settings.origin
         let new = serverInput.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        if old != new && !settings.uploads.isEmpty { notice = "Очередь связана с текущим сервером. Завершите или отмените её перед сменой адреса"; return }
+        if old != new && !settings.uploads.isEmpty { notice = L("Очередь связана с текущим сервером. Завершите или отмените её перед сменой адреса"); return }
         settings.origin = new
         busy = true; notice = ""; pairingURL = ""
         pairTask = Task {
             defer { busy = false; pairingURL = ""; pairTask = nil }
             do {
                 let name = "Mac · " + (Host.current().localizedName ?? "ShareFile")
-                guard let result = try await request("pair_start", ["name": String(name.prefix(80))]) as? [String: Any], let verification = result["verification_url"] as? String, let raw = result["request"] as? [String: Any], let id = raw["id"] as? String, let secret = raw["secret"] as? String else { throw AppFailure(message: "Не удалось начать подключение") }
+                guard let result = try await request("pair_start", ["name": String(name.prefix(80))]) as? [String: Any], let verification = result["verification_url"] as? String, let raw = result["request"] as? [String: Any], let id = raw["id"] as? String, let secret = raw["secret"] as? String else { throw AppFailure(message: L("Не удалось начать подключение")) }
                 pairingURL = verification
                 if let url = URL(string: verification) { NSWorkspace.shared.open(url) }
                 let interval = max(result["interval"] as? Int ?? 12, 12)
@@ -243,32 +256,32 @@ struct UploadCompletion: Equatable {
                         try await validateSession()
                         let account = keyAccount
                         try await Task.detached { try CredentialStore.write(account, value: value) }.value
-                        notice = "Mac подключён. Можно загружать файлы"
+                        notice = L("Mac подключён. Можно загружать файлы")
                         page = "files"
                         if !pendingFiles.isEmpty { let files = pendingFiles; pendingFiles = []; add(files) }
                         return
                     }
                 }
-                throw AppFailure(message: "Время подтверждения истекло. Подключите Mac заново")
-            } catch is CancellationError { notice = "Подключение отменено" }
-            catch { token = ""; settings.origin = old; notice = Task.isCancelled ? "Подключение отменено" : error.localizedDescription }
+                throw AppFailure(message: L("Время подтверждения истекло. Подключите Mac заново"))
+            } catch is CancellationError { notice = L("Подключение отменено") }
+            catch { token = ""; settings.origin = old; notice = Task.isCancelled ? L("Подключение отменено") : error.localizedDescription }
         }
     }
     func cancelPairing() { pairTask?.cancel() }
     func disconnect() {
-        guard activeID == nil && !busy else { notice = "Приостановите загрузку перед отключением"; return }
+        guard activeID == nil && !busy else { notice = L("Приостановите загрузку перед отключением"); return }
         busy = true
         Task {
             defer { busy = false }
-            do { let account = keyAccount; try await Task.detached { try CredentialStore.delete(account) }.value; token = ""; notice = "Подключение удалено с Mac. Отозвать устройство можно в Web UI" }
+            do { let account = keyAccount; try await Task.detached { try CredentialStore.delete(account) }.value; token = ""; notice = L("Подключение удалено с Mac. Отозвать устройство можно в Web UI") }
             catch { notice = error.localizedDescription }
         }
     }
     func saveOptions() {
-        if !password.isEmpty && !(12...256).contains(password.utf8.count) { notice = "Пароль ссылки: от 12 до 256 байт UTF-8"; return }
+        if !password.isEmpty && !(12...256).contains(password.utf8.count) { notice = L("Пароль ссылки: от 12 до 256 байт UTF-8"); return }
         let value = password, account = "password:" + keyAccount
         Task {
-            do { try await Task.detached { if value.isEmpty { try CredentialStore.delete(account) } else { try CredentialStore.write(account, value: value) } }.value; save(); notice = "Настройки сохранены" }
+            do { try await Task.detached { if value.isEmpty { try CredentialStore.delete(account) } else { try CredentialStore.write(account, value: value) } }.value; save(); notice = L("Настройки сохранены") }
             catch { notice = error.localizedDescription }
         }
     }
@@ -276,13 +289,13 @@ struct UploadCompletion: Equatable {
     func setNotifyUploads(_ enabled: Bool) { settings.notifyUploads = enabled; save() }
     func chooseFiles() {
         let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = true; panel.allowsMultipleSelection = true
-        panel.prompt = "Загрузить и поделиться"
+        panel.prompt = L("Загрузить и поделиться")
         panel.begin { response in if response == .OK { Task { @MainActor in self.add(panel.urls) } } }
     }
     func uploadClipboard(_ pasteboard: NSPasteboard = .general) {
-        guard readableState else { clipboardFailure("Не удалось прочитать очередь. Сохраните state.json перед восстановлением"); return }
-        guard connected, !busy else { page = "settings"; clipboardFailure("Сначала подключите хранилище и дождитесь завершения подключения"); return }
-        guard !settings.folder.isEmpty else { clipboardFailure("Выберите папку назначения"); return }
+        guard readableState else { clipboardFailure(L("Не удалось прочитать очередь. Сохраните state.json перед восстановлением")); return }
+        guard connected, !busy else { page = "settings"; clipboardFailure(L("Сначала подключите хранилище и дождитесь завершения подключения")); return }
+        guard !settings.folder.isEmpty else { clipboardFailure(L("Выберите папку назначения")); return }
         do {
             let file = try clipboardImages.capture(pasteboard)
             pendingImages.insert(file.path)
@@ -296,9 +309,9 @@ struct UploadCompletion: Equatable {
                 pendingImages.remove(clipboardSource); clipboardImages.remove(clipboardSource)
             }
         }
-        guard connected else { pendingFiles.append(contentsOf: urls); page = "settings"; notice = "Подключите хранилище. Выбранные файлы добавятся после подтверждения"; return }
-        guard !settings.folder.isEmpty else { notice = "Выберите папку назначения"; return }
-        guard password.isEmpty || (12...256).contains(password.utf8.count) else { notice = "Исправьте пароль ссылки в настройках"; return }
+        guard connected else { pendingFiles.append(contentsOf: urls); page = "settings"; notice = L("Подключите хранилище. Выбранные файлы добавятся после подтверждения"); return }
+        guard !settings.folder.isEmpty else { notice = L("Выберите папку назначения"); return }
+        guard password.isEmpty || (12...256).contains(password.utf8.count) else { notice = L("Исправьте пароль ссылки в настройках"); return }
         let folder = settings.folder, batch = UUID().uuidString, days = settings.days, never = settings.never
         preparingBatches.insert(batch)
         Task {
@@ -307,7 +320,7 @@ struct UploadCompletion: Equatable {
                 if let clipboardSource { pendingImages.remove(clipboardSource); clipboardImages.reconcile(settings.uploads, pending: pendingImages) }
             }
             for url in urls {
-                if settings.uploads.count >= 100 { notice = "В очереди уже 100 загрузок. Удалите завершённые записи"; break }
+                if settings.uploads.count >= 100 { notice = L("В очереди уже 100 загрузок. Удалите завершённые записи"); break }
                 do {
                     let isDirectory = try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true
                     let raw = try await request(isDirectory ? "prepare_directory" : "prepare", ["source": url.path, "parent": folder])
@@ -392,17 +405,17 @@ struct UploadCompletion: Equatable {
         do {
             let result = try await request("share", ["job": job.checkpoint, "options": ["days": job.days, "never": job.never, "password": password]], call: call) as? [String: Any] ?? [:]
             guard let url = result["url"] as? String, let share = result["share"] as? [String: Any],
-                  let identity = share["id"] as? String, LinkHistory.validID(identity) else { throw AppFailure(message: "Сервер не вернул ссылку") }
+                  let identity = share["id"] as? String, LinkHistory.validID(identity) else { throw AppFailure(message: L("Сервер не вернул ссылку")) }
             link = url; shareID = identity
             created = (share["created_at"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
             expires = (share["expires_at"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
         } catch {
-            update(id) { $0.status = "uncertain"; $0.message = error.localizedDescription + ". Сервер мог создать ссылку; проверьте Web UI перед повтором." }
+            update(id) { $0.status = "uncertain"; $0.message = error.localizedDescription + L(". Сервер мог создать ссылку; проверьте Web UI перед повтором.") }
             return
         }
         var message = ""
         do { try await history.record(origin: settings.origin, owner: settings.owner, job: job, url: link, shareID: shareID, created: created, expires: expires) }
-        catch { message = "Ссылка создана, но не сохранена в защищённой истории. Скопируйте её из очереди"; notice = message }
+        catch { message = L("Ссылка создана, но не сохранена в защищённой истории. Скопируйте её из очереди"); notice = message }
         update(id) { $0.status = "done"; $0.link = link; $0.shareID = shareID; $0.message = message }
         finishBatch(job.batch)
     }
@@ -416,7 +429,7 @@ struct UploadCompletion: Equatable {
         connected && settings.origin == entry.origin && settings.owner == entry.owner && !entry.revoked && !revokingHistory.contains(entry.account)
     }
     func revokeHistory(_ entry: SentLink) {
-        guard canRevokeHistory(entry) else { notice = "Для отзыва подключите тот же сервер и аккаунт"; return }
+        guard canRevokeHistory(entry) else { notice = L("Для отзыва подключите тот же сервер и аккаунт"); return }
         revokingHistory.insert(entry.account)
         let origin = settings.origin, owner = settings.owner, credential = token
         Task {
@@ -426,9 +439,9 @@ struct UploadCompletion: Equatable {
                 if settings.origin == origin && settings.owner == owner {
                     for job in settings.uploads where job.shareID == entry.shareID { update(job.id) { $0.link = ""; $0.shareID = "" } }
                 }
-                do { try await history.markRevoked(entry); notice = "Ссылка отозвана" }
-                catch { notice = "Ссылка отозвана на сервере, но локальная история не сохранена. Проверьте Keychain и диск" }
-            } catch { notice = "Отзыв не подтверждён: " + error.localizedDescription }
+                do { try await history.markRevoked(entry); notice = L("Ссылка отозвана") }
+                catch { notice = L("Ссылка отозвана на сервере, но локальная история не сохранена. Проверьте Keychain и диск") }
+            } catch { notice = L("Отзыв не подтверждён: ") + error.localizedDescription }
         }
     }
     private func finishBatch(_ id: String) {
@@ -440,9 +453,9 @@ struct UploadCompletion: Equatable {
         if settings.notifyUploads { onUploadCompletion?(UploadCompletion(names: batch.map(\.name), copied: copied)) }
     }
     func remove(_ id: String) {
-        guard let job = settings.uploads.first(where: { $0.id == id }), activeID != id else { notice = "Сначала приостановите загрузку"; return }
+        guard let job = settings.uploads.first(where: { $0.id == id }), activeID != id else { notice = L("Сначала приостановите загрузку"); return }
         if ["done", "uploaded", "uncertain"].contains(job.status) { settings.uploads.removeAll { $0.id == id }; save(); return }
-        guard connected else { notice = "Для отмены загрузки подключите тот же аккаунт"; return }
+        guard connected else { notice = L("Для отмены загрузки подключите тот же аккаунт"); return }
         update(id) { $0.status = "cancelling" }
         Task {
             do {
@@ -450,23 +463,23 @@ struct UploadCompletion: Equatable {
                 let input = job.directory == nil ? ["job": job.checkpoint] : ["directory_job": job.directoryCheckpoint]
                 _ = try await request(operation, input); settings.uploads.removeAll { $0.id == id }; save()
             }
-            catch { update(id) { $0.status = "paused"; $0.message = "Отмена не подтверждена: " + error.localizedDescription } }
+            catch { update(id) { $0.status = "paused"; $0.message = L("Отмена не подтверждена: ") + error.localizedDescription } }
         }
     }
     func clearFinished() { settings.uploads.removeAll { $0.status == "done" }; save() }
     func retryLink(_ id: String) {
-        guard !pumping && !busy else { notice = "Дождитесь завершения текущей операции"; return }
+        guard !pumping && !busy else { notice = L("Дождитесь завершения текущей операции"); return }
         busy = true
         Task { defer { busy = false; activeCall = nil; pump() }; await makeLink(id) }
     }
     @discardableResult func copy(_ text: String) -> Bool {
         guard !text.isEmpty else { return false }
         let copied = writeClipboard(text)
-        notice = copied ? "Ссылки скопированы в буфер обмена" : "Не удалось скопировать ссылки. Попробуйте ещё раз"
+        notice = copied ? L("Ссылки скопированы в буфер обмена") : L("Не удалось скопировать ссылки. Попробуйте ещё раз")
         return copied
     }
     func openWeb() { if let url = URL(string: settings.origin) { NSWorkspace.shared.open(url) } }
-    func browseFolders(_ parent: String = "", name: String = "Доступные папки", back: Bool = false) {
+    func browseFolders(_ parent: String = "", name: String = L("Доступные папки"), back: Bool = false) {
         Task {
             do {
                 let result = try await request("folders", ["parent": parent]) as? [[String: Any]] ?? []
@@ -478,7 +491,7 @@ struct UploadCompletion: Equatable {
     }
     func folderBack() { if folderTrail.count > 1 { folderTrail.removeLast(); let last = folderTrail.last!; browseFolders(last.0, name: last.1, back: true) } }
     func selectFolder(_ folder: Folder) {
-        guard folder.role >= 3 else { notice = "Для загрузки с публичной ссылкой нужны права управляющего"; return }
+        guard folder.role >= 3 else { notice = L("Для загрузки с публичной ссылкой нужны права управляющего"); return }
         settings.folder = folder.id; settings.folderName = folder.name; save(); showFolders = false
     }
 }

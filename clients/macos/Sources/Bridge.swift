@@ -21,7 +21,7 @@ final class BridgeCall: @unchecked Sendable {
     func run(_ input: [String: Any], progress: @escaping @Sendable ([String: Any]) -> Void = { _ in }) async throws -> Any {
         let data = try JSONSerialization.data(withJSONObject: input)
         guard let directory = Bundle.main.executableURL?.deletingLastPathComponent() else {
-            throw AppFailure(message: "Не найдено ядро приложения")
+            throw AppFailure(message: L("Не найдено ядро приложения"))
         }
         return try await withTaskCancellationHandler(operation: {
           try await withCheckedThrowingContinuation { continuation in
@@ -37,7 +37,7 @@ final class BridgeCall: @unchecked Sendable {
                     if self.cancelled { throw CancellationError() }
                     try self.process.run()
                 } catch {
-                    continuation.resume(throwing: AppFailure(message: "Не удалось запустить ядро приложения")); return
+                    continuation.resume(throwing: AppFailure(message: L("Не удалось запустить ядро приложения"))); return
                 }
                 do {
                     try stdin.fileHandleForWriting.write(contentsOf: data)
@@ -50,7 +50,7 @@ final class BridgeCall: @unchecked Sendable {
                     let bytes = stdout.fileHandleForReading.availableData
                     if bytes.isEmpty { break }
                     buffer.append(bytes)
-                    if buffer.count > 16_000_000 { self.interrupt(); failure = AppFailure(message: "Слишком большой ответ ядра"); break }
+                    if buffer.count > 16_000_000 { self.interrupt(); failure = AppFailure(message: L("Слишком большой ответ ядра")); break }
                     while let newline = buffer.firstIndex(of: 10) {
                         let line = buffer[..<newline]
                         buffer.removeSubrange(...newline)
@@ -61,7 +61,7 @@ final class BridgeCall: @unchecked Sendable {
                             progress(job)
                         }
                         case "result": final = event["result"] ?? NSNull()
-                        case "error": failure = AppFailure(message: event["error"] as? String ?? "Ошибка ядра")
+                        case "error": failure = AppFailure(message: L(event["error"] as? String ?? "Ошибка ядра"))
                         default: break
                         }
                     }
@@ -69,7 +69,7 @@ final class BridgeCall: @unchecked Sendable {
                 self.process.waitUntilExit()
                 if let failure { continuation.resume(throwing: failure) }
                 else if let final { continuation.resume(returning: final) }
-                else { continuation.resume(throwing: AppFailure(message: "Передача прервана. Её можно продолжить")) }
+                else { continuation.resume(throwing: AppFailure(message: L("Передача прервана. Её можно продолжить"))) }
             }
           }
         }, onCancel: { self.interrupt() })
@@ -93,7 +93,7 @@ enum CredentialStore {
         let status = SecItemCopyMatching(q as CFDictionary, &result)
         if status == errSecItemNotFound { return nil }
         guard status == errSecSuccess, let data = result as? Data, let value = String(data: data, encoding: .utf8) else {
-            throw AppFailure(message: "Keychain не предоставил доступ к подключению (\(status))")
+            throw AppFailure(message: L("Keychain не предоставил доступ к подключению ({0})", String(status)))
         }
         return value
     }
@@ -102,10 +102,10 @@ enum CredentialStore {
         let attrs: [String: Any] = [kSecValueData as String: Data(value.utf8)]
         var status = SecItemUpdate(q as CFDictionary, attrs as CFDictionary)
         if status == errSecItemNotFound { status = SecItemAdd(q.merging(attrs) { _, new in new } as CFDictionary, nil) }
-        guard status == errSecSuccess else { throw AppFailure(message: "Не удалось сохранить подключение в Keychain (\(status))") }
+        guard status == errSecSuccess else { throw AppFailure(message: L("Не удалось сохранить подключение в Keychain ({0})", String(status))) }
     }
     static func delete(_ account: String) throws {
         let status = SecItemDelete(query(account) as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else { throw AppFailure(message: "Не удалось удалить подключение из Keychain (\(status))") }
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw AppFailure(message: L("Не удалось удалить подключение из Keychain ({0})", String(status))) }
     }
 }

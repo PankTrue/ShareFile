@@ -1,3 +1,4 @@
+from .localization import tr
 """Secret Service via libsecret's CLI; no plaintext fallback."""
 import shutil
 import subprocess
@@ -9,7 +10,7 @@ class SecretStore:
     def _run(self, operation, origin, kind, value=None):
         executable = shutil.which("secret-tool")
         if not executable:
-            raise ClientError("Установите secret-tool (libsecret) и включите GNOME Keyring или KWallet с Secret Service")
+            raise ClientError(tr("Установите secret-tool (libsecret) и включите GNOME Keyring или KWallet с Secret Service"))
         args = [executable, operation]
         if operation == "store":
             args.append("--label=ShareFile · " + kind)
@@ -17,11 +18,11 @@ class SecretStore:
         try:
             result = subprocess.run(args, input=value, text=True, capture_output=True, timeout=120)
         except (OSError, subprocess.TimeoutExpired):
-            raise ClientError("Системное хранилище секретов недоступно или заблокировано") from None
+            raise ClientError(tr("Системное хранилище секретов недоступно или заблокировано")) from None
         if result.returncode != 0:
             if operation in ("lookup", "clear") and result.returncode == 1 and not result.stderr.strip():
                 return ""
-            raise ClientError("Системное хранилище секретов недоступно. Разблокируйте GNOME Keyring или KWallet")
+            raise ClientError(tr("Системное хранилище секретов недоступно. Разблокируйте GNOME Keyring или KWallet"))
         return result.stdout.rstrip("\n") if operation == "lookup" else ""
 
     def read(self, origin, kind="device"):

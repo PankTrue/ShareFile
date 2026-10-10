@@ -23,24 +23,24 @@ public static class ClipboardUpload
                     int count;
                     while ((count = stream.Read(buffer, 0, buffer.Length)) > 0)
                     {
-                        if (bounded.Length + count > ClipboardImages.MaxBytes) throw new ClientException("Изображение слишком большое (максимум 32 МиБ)");
+                        if (bounded.Length + count > ClipboardImages.MaxBytes) throw new ClientException(Localization.Text("Изображение слишком большое (максимум 32 МиБ)"));
                         bounded.Write(buffer, 0, count);
                     }
                     bounded.Position = 0;
                     image = BitmapFrame.Create(bounded, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
                 }
                 image ??= Clipboard.GetImage();
-                if (image is null) throw new ClientException("В буфере обмена нет изображения. Скопируйте скриншот и повторите");
+                if (image is null) throw new ClientException(Localization.Text("В буфере обмена нет изображения. Скопируйте скриншот и повторите"));
                 if (image.PixelWidth <= 0 || image.PixelHeight <= 0 || (long)image.PixelWidth * image.PixelHeight > ClipboardImages.MaxPixels)
-                    throw new ClientException("Изображение слишком большое (максимум 25 Мп)");
+                    throw new ClientException(Localization.Text("Изображение слишком большое (максимум 25 Мп)"));
                 var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image));
                 using var png = new MemoryStream(); encoder.Save(png);
-                if (png.Length > ClipboardImages.MaxBytes) throw new ClientException("Изображение слишком большое (максимум 32 МиБ)");
+                if (png.Length > ClipboardImages.MaxBytes) throw new ClientException(Localization.Text("Изображение слишком большое (максимум 32 МиБ)"));
                 return png.ToArray();
             }
             catch (ExternalException) when (attempt < 4) { await Task.Delay(100 * (attempt + 1)); }
         }
-        throw new ClientException("Буфер обмена занят. Повторите загрузку");
+        throw new ClientException(Localization.Text("Буфер обмена занят. Повторите загрузку"));
     }
 }
 
@@ -59,7 +59,7 @@ public sealed class ClipboardHotKey : IDisposable
         if (!RegisterHotKey(_source.Handle, Id, 0x0001 | 0x0002 | 0x4000, 0x55))
         {
             _source.Dispose();
-            throw new ClientException("Ctrl+Alt+U занято другим приложением. Используйте «Из буфера обмена» в меню ShareFile");
+            throw new ClientException(Localization.Text("Ctrl+Alt+U занято другим приложением. Используйте «Из буфера обмена» в меню ShareFile"));
         }
     }
     private IntPtr Handle(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)

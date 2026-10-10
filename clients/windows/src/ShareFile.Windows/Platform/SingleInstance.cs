@@ -15,10 +15,10 @@ public sealed record LaunchRequest(bool Show, string[] Paths)
     {
         var upload = args.FirstOrDefault() == "--upload";
         if (args.SequenceEqual(new[] { "--background" })) return new LaunchRequest(false, []);
-        if (args.Length != 0 && !upload) throw new ClientException("Ожидалось: ShareFile.exe [--upload <файлы>]");
+        if (args.Length != 0 && !upload) throw new ClientException(Localization.Text("Ожидалось: ShareFile.exe [--upload <файлы>]"));
         var paths = upload ? args.Skip(1).ToArray() : [];
         if (paths.Length > 100 || paths.Any(p => !Path.IsPathFullyQualified(p)))
-            throw new ClientException("Передайте не более 100 абсолютных путей к файлам");
+            throw new ClientException(Localization.Text("Передайте не более 100 абсолютных путей к файлам"));
         return new LaunchRequest(!upload, paths);
     }
 }
@@ -43,14 +43,14 @@ public sealed class SingleInstance : IAsyncDisposable
         await using var pipe = new NamedPipeClientStream(".", _name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         await pipe.ConnectAsync(timeout.Token).ConfigureAwait(false);
         var bytes = JsonSerializer.SerializeToUtf8Bytes(request);
-        if (bytes.Length > 256 * 1024) throw new ClientException("Слишком длинный список путей");
+        if (bytes.Length > 256 * 1024) throw new ClientException(Localization.Text("Слишком длинный список путей"));
         var prefix = new byte[4];
         BinaryPrimitives.WriteInt32LittleEndian(prefix, bytes.Length);
         await pipe.WriteAsync(prefix, timeout.Token).ConfigureAwait(false);
         await pipe.WriteAsync(bytes, timeout.Token).ConfigureAwait(false);
         var ack = new byte[1];
         await pipe.ReadExactlyAsync(ack, timeout.Token).ConfigureAwait(false);
-        if (ack[0] != 1) throw new ClientException("ShareFile не принял файлы. Откройте приложение и проверьте очередь");
+        if (ack[0] != 1) throw new ClientException(Localization.Text("ShareFile не принял файлы. Откройте приложение и проверьте очередь"));
     }
 
     public void Listen(Func<LaunchRequest, Task> receive, Action<string> failure) => _listener = Task.Run(async () =>
@@ -67,12 +67,12 @@ public sealed class SingleInstance : IAsyncDisposable
                 var prefix = new byte[4];
                 await pipe.ReadExactlyAsync(prefix, timeout.Token).ConfigureAwait(false);
                 var length = BinaryPrimitives.ReadInt32LittleEndian(prefix);
-                if (length is <= 0 or > 256 * 1024) throw new ClientException("Некорректный запрос Проводника");
+                if (length is <= 0 or > 256 * 1024) throw new ClientException(Localization.Text("Некорректный запрос Проводника"));
                 var data = new byte[length];
                 await pipe.ReadExactlyAsync(data, timeout.Token).ConfigureAwait(false);
-                var request = JsonSerializer.Deserialize<LaunchRequest>(data) ?? throw new ClientException("Пустой запрос Проводника");
+                var request = JsonSerializer.Deserialize<LaunchRequest>(data) ?? throw new ClientException(Localization.Text("Пустой запрос Проводника"));
                 if (request.Paths is null || request.Paths.Length > 100 || request.Paths.Any(p => !Path.IsPathFullyQualified(p)))
-                    throw new ClientException("Некорректные пути файлов");
+                    throw new ClientException(Localization.Text("Некорректные пути файлов"));
                 await receive(request).ConfigureAwait(false);
                 await pipe.WriteAsync(new byte[] { 1 }, timeout.Token).ConfigureAwait(false);
             }

@@ -35,7 +35,7 @@ public sealed class ShareFileApi : IShareFileApi, IDisposable
     private HttpRequestMessage Request(HttpMethod method, string path, HttpContent? content = null, bool tus = false)
     {
         if (!path.StartsWith("/api/v1/", StringComparison.Ordinal) || path.Contains('\r') || path.Contains('\n'))
-            throw new ClientException("Некорректный API-путь");
+            throw new ClientException(Localization.Text("Некорректный API-путь"));
         var request = new HttpRequestMessage(method, Origin + path) { Content = content };
         if (_token.Length != 0) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
         if (tus) request.Headers.Add("Tus-Resumable", "1.0.0");
@@ -46,7 +46,7 @@ public sealed class ShareFileApi : IShareFileApi, IDisposable
     {
         HttpResponseMessage response;
         try { response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false); }
-        catch (HttpRequestException) { throw new ClientException("Не удалось связаться с сервером. Проверьте сеть и сертификат HTTPS"); }
+        catch (HttpRequestException) { throw new ClientException(Localization.Text("Не удалось связаться с сервером. Проверьте сеть и сертификат HTTPS"), retryable: true); }
         if (response.StatusCode == expected) return response;
         var status = (int)response.StatusCode;
         var delay = response.Headers.RetryAfter?.Delta ??
@@ -68,10 +68,10 @@ public sealed class ShareFileApi : IShareFileApi, IDisposable
         {
             await response.Content.LoadIntoBufferAsync(1024 * 1024, ct).ConfigureAwait(false);
             return await response.Content.ReadFromJsonAsync<T>(Json, ct).ConfigureAwait(false)
-                ?? throw new ClientException("Пустой ответ сервера");
+                ?? throw new ClientException(Localization.Text("Пустой ответ сервера"));
         }
-        catch (JsonException) { throw new ClientException("Некорректный ответ сервера"); }
-        catch (HttpRequestException) { throw new ClientException("Не удалось прочитать ответ сервера"); }
+        catch (JsonException) { throw new ClientException(Localization.Text("Некорректный ответ сервера")); }
+        catch (HttpRequestException) { throw new ClientException(Localization.Text("Не удалось прочитать ответ сервера"), retryable: true); }
     }
 
     private async Task<T> JsonAsync<T>(HttpMethod method, string path, object? body, HttpStatusCode expected, CancellationToken ct)
@@ -96,7 +96,7 @@ public sealed class ShareFileApi : IShareFileApi, IDisposable
         using var response = await SendAsync(request, HttpStatusCode.Created, deadline.Token).ConfigureAwait(false);
         var node = await ReadAsync<Node>(response, deadline.Token).ConfigureAwait(false);
         Protocol.RequireIdentifier(node.Id);
-        if (node.Kind != "folder" || node.ParentId != parent) throw new ClientException("Сервер вернул некорректную папку");
+        if (node.Kind != "folder" || node.ParentId != parent) throw new ClientException(Localization.Text("Сервер вернул некорректную папку"));
         return node;
     }
 
@@ -119,7 +119,7 @@ public sealed class ShareFileApi : IShareFileApi, IDisposable
             result.AddRange(nodes.Where(n => n.Kind == "folder" && Protocol.IsIdentifier(n.Id)));
             if (nodes.Length < 100) return result;
         }
-        throw new ClientException("Слишком много объектов в папке");
+        throw new ClientException(Localization.Text("Слишком много объектов в папке"));
     }
 
     public async Task<Pairing> StartPairingAsync(string name, CancellationToken cancellationToken)
@@ -137,13 +137,13 @@ public sealed class ShareFileApi : IShareFileApi, IDisposable
         // 202 is the pending state; no retry policy is attached to this one-time token exchange.
         HttpResponseMessage response;
         try { response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false); }
-        catch (HttpRequestException) { throw new ClientException("Не удалось проверить подтверждение подключения"); }
+        catch (HttpRequestException) { throw new ClientException(Localization.Text("Не удалось проверить подтверждение подключения"), retryable: true); }
         using (response)
         {
             if (response.StatusCode == HttpStatusCode.Accepted) return null;
             if (response.StatusCode != HttpStatusCode.OK) throw new ApiException((int)response.StatusCode);
             var result = await ReadAsync<TokenResponse>(response, deadline.Token).ConfigureAwait(false);
-            return !string.IsNullOrEmpty(result.Token) ? result.Token : throw new ClientException("Сервер не вернул токен устройства");
+            return !string.IsNullOrEmpty(result.Token) ? result.Token : throw new ClientException(Localization.Text("Сервер не вернул токен устройства"));
         }
     }
     private sealed record TokenResponse(string Token);
@@ -152,7 +152,7 @@ public sealed class ShareFileApi : IShareFileApi, IDisposable
         response.Headers.TryGetValues(name, out var values) ? values.SingleOrDefault() ?? "" : "";
     private static long Number(HttpResponseMessage response, string name) =>
         long.TryParse(Header(response, name), NumberStyles.None, CultureInfo.InvariantCulture, out var value)
-            ? value : throw new ClientException("Сервер вернул некорректное состояние загрузки");
+            ? value : throw new ClientException(Localization.Text("Сервер вернул некорректное состояние загрузки"));
 
     public async Task<UploadJob> CreateUploadAsync(UploadJob job, CancellationToken cancellationToken)
     {
@@ -179,7 +179,7 @@ public sealed class ShareFileApi : IShareFileApi, IDisposable
             Number(response, "Sharefile-Chunk-Size"), Protocol.RequireIdentifier(Header(response, "Sharefile-File-ID")),
             Header(response, "Sharefile-Upload-State"));
         if (head.Offset < 0 || head.Offset > head.Length || head.ChunkSize < 1 ||
-            head.State is not ("open" or "committing" or "complete")) throw new ClientException("Некорректное состояние загрузки на сервере");
+            head.State is not ("open" or "committing" or "complete")) throw new ClientException(Localization.Text("Некорректное состояние загрузки на сервере"));
         return head with { ChunkSize = Math.Min(head.ChunkSize, 4 * 1024 * 1024) };
     }
 
@@ -207,7 +207,7 @@ public sealed class ShareFileApi : IShareFileApi, IDisposable
     {
         if ((!options.Never && options.Days is < 1 or > 365) ||
             (options.Password.Length != 0 && Encoding.UTF8.GetByteCount(options.Password) is < 12 or > 256))
-            throw new ClientException("Срок ссылки: 1–365 дней; пароль: 12–256 байт UTF-8");
+            throw new ClientException(Localization.Text("Срок ссылки: 1–365 дней; пароль: 12–256 байт UTF-8"));
         var body = new Dictionary<string, object?>
         {
             ["node_id"] = Protocol.RequireIdentifier(fileId),
@@ -245,7 +245,7 @@ public sealed class ShareFileApi : IShareFileApi, IDisposable
                 while (remaining > 0)
                 {
                     var read = await source.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, remaining)), ct).ConfigureAwait(false);
-                    if (read == 0) throw new ClientException("Исходный файл неожиданно закончился");
+                    if (read == 0) throw new ClientException(Localization.Text("Исходный файл неожиданно закончился"));
                     await target.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
                     remaining -= read;
                 }

@@ -37,12 +37,12 @@ struct TransferSummary {
         count = jobs.count
         percent = size > 0 ? floor(offset / size * 100) : completed == count ? 100 : 0
         let blocked = jobs.contains { !["queued", "uploading", "uploaded", "sharing", "done"].contains($0.status) }
-        if completed == count { detail = "Загрузка завершена" }
-        else if jobs.contains(where: { ["error", "uncertain", "cancelling"].contains($0.status) }) { detail = "Требуется действие · Оставшееся время —" }
-        else if blocked { detail = "Приостановлено · Оставшееся время —" }
-        else if size == offset { detail = "Данные переданы · Завершаем загрузку…" }
+        if completed == count { detail = L("Загрузка завершена") }
+        else if jobs.contains(where: { ["error", "uncertain", "cancelling"].contains($0.status) }) { detail = L("Требуется действие · Оставшееся время —") }
+        else if blocked { detail = L("Приостановлено · Оставшееся время —") }
+        else if size == offset { detail = L("Данные переданы · Завершаем загрузку…") }
         else if jobs.contains(where: { $0.status == "uploading" }) { detail = transferDetails(rate, seconds: rate > 0 ? (size - offset) / rate : nil) }
-        else { detail = "В очереди · Оставшееся время —" }
+        else { detail = L("В очереди · Оставшееся время —") }
     }
 }
 
@@ -54,23 +54,26 @@ func progressSelection(_ jobs: [Upload]) -> [Upload] {
 }
 
 func progressBytes(_ bytes: Double) -> String {
-    // Double(Int64.max) rounds up; stay below the conversion boundary.
-    ByteCountFormatter.string(fromByteCount: Int64(max(0, min(bytes, Double(Int64.max).nextDown))), countStyle: .file)
+    var value = max(0, bytes)
+    let units = ["Б", "КиБ", "МиБ", "ГиБ", "ТиБ"]
+    var index = 0
+    while value >= 1024 && index < units.count - 1 { value /= 1024; index += 1 }
+    return String(format: index == 0 ? "%.0f %@" : "%.1f %@", locale: Localization.locale, value, L(units[index]))
 }
 func remainingTime(_ seconds: Double) -> String {
     let rounded = max(1, ceil(seconds))
-    if rounded < 60 { return "\(Int(rounded)) с" }
-    if rounded < 3600 { return "\(Int(ceil(rounded / 60))) мин" }
+    if rounded < 60 { return L("{0} с", String(Int(rounded))) }
+    if rounded < 3600 { return L("{0} мин", String(Int(ceil(rounded / 60)))) }
     let minutes = Int(ceil(rounded / 60))
-    return "\(minutes / 60) ч" + (minutes % 60 > 0 ? " \(minutes % 60) мин" : "")
+    return L("{0} ч", String(minutes / 60)) + (minutes % 60 > 0 ? L(" {0} мин", String(minutes % 60)) : "")
 }
 func transferDetails(_ rate: Double, seconds: Double?) -> String {
-    guard rate > 0 else { return "Скорость — · Оцениваем оставшееся время…" }
-    return progressBytes(rate) + "/с · " + (seconds.map { "Осталось ≈ " + remainingTime($0) } ?? "Оставшееся время —")
+    guard rate > 0 else { return L("Скорость — · Оцениваем оставшееся время…") }
+    return progressBytes(rate) + L("/с · ") + (seconds.map { L("Осталось ≈ ") + remainingTime($0) } ?? L("Оставшееся время —"))
 }
 
 func verifyTransferProgress() throws {
-    guard remainingTime(7199) == "2 ч" else { throw AppFailure(message: "ETA rounding produced 60 minutes") }
+    guard remainingTime(7199) == L("2 ч") else { throw AppFailure(message: "ETA rounding produced 60 minutes") }
     var now = 0.0
     var meter = TransferMeter(clock: { now })
     guard meter.rate() == 0 else { throw AppFailure(message: "Initial transfer rate is nonzero") }
@@ -85,9 +88,9 @@ func verifyTransferProgress() throws {
     var old = small; old.id = "old"; old.batch = "old"; old.size = 9000; old.offset = 9000
     let selection = progressSelection([old, small, job])
     let summary = TransferSummary(jobs: selection, rate: 100)
-    guard summary.percent == 50, summary.size == 1000, summary.completed == 1, summary.detail.contains("Осталось ≈ 5 с") else { throw AppFailure(message: "Wrong batch weighting or ETA") }
+    guard summary.percent == 50, summary.size == 1000, summary.completed == 1, summary.detail.contains(L("Осталось ≈ 5 с")) else { throw AppFailure(message: "Wrong batch weighting or ETA") }
     job.status = "paused"
-    guard !TransferSummary(jobs: [small, job], rate: 100).detail.contains("Осталось ≈") else { throw AppFailure(message: "Paused selection has ETA") }
+    guard !TransferSummary(jobs: [small, job], rate: 100).detail.contains(L("Осталось ≈")) else { throw AppFailure(message: "Paused selection has ETA") }
     job.size = 0; job.offset = 0; job.status = "sharing"
     guard TransferSummary(jobs: [job], rate: 0).percent == 0 else { throw AppFailure(message: "Empty file completed too early") }
     job.status = "done"

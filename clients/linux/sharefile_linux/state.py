@@ -1,3 +1,4 @@
+from .localization import tr, normalize
 import copy
 import json
 import os
@@ -13,14 +14,14 @@ CHECKPOINT = ("id", "source", "name", "size", "modified", "fingerprint", "folder
               "upload", "file_id", "offset")
 JOB_FIELDS = CHECKPOINT + ("status", "message", "batch", "days", "never", "share_id")
 DEFAULTS = {"origin": "", "owner": "", "username": "", "folder": "", "folder_name": "Uploads",
-            "days": 7, "never": False, "silent_uploads": True, "notify_uploads": True}
+            "days": 7, "never": False, "silent_uploads": True, "notify_uploads": True, "language": "en"}
 STATUSES = {"queued", "uploading", "paused", "uploaded", "sharing", "uncertain", "done", "error", "cancelling"}
-UNCERTAIN = "Сервер мог создать ссылку. Проверьте ссылки в Web UI перед созданием новой"
+UNCERTAIN = tr("Сервер мог создать ссылку. Проверьте ссылки в Web UI перед созданием новой")
 
 
 def require_id(value):
     if not isinstance(value, str) or not IDENTIFIER.fullmatch(value):
-        raise ClientError("Некорректный идентификатор в очереди или ответе сервера")
+        raise ClientError(tr("Некорректный идентификатор в очереди или ответе сервера"))
 
 
 def validate_job(job):
@@ -28,22 +29,22 @@ def validate_job(job):
         require_id(job.get(field))
     for field in ("source", "name", "fingerprint", "upload", "file_id", "share_id", "message"):
         if not isinstance(job.get(field), str):
-            raise ClientError("Некорректный формат очереди")
+            raise ClientError(tr("Некорректный формат очереди"))
     for field in ("size", "modified", "offset", "days"):
         if type(job.get(field)) is not int:
-            raise ClientError("Некорректный размер или срок в очереди")
+            raise ClientError(tr("Некорректный размер или срок в очереди"))
     if not 0 <= job["offset"] <= job["size"] <= (1 << 63) - 1 or not 1 <= job["days"] <= 365:
-        raise ClientError("Некорректный размер или срок в очереди")
+        raise ClientError(tr("Некорректный размер или срок в очереди"))
     if (not Path(job["source"]).is_absolute() or Path(job["source"]).name != job["name"]
             or not re.fullmatch(r"[a-f0-9]{64}", job["fingerprint"])):
-        raise ClientError("Некорректный путь или отпечаток файла в очереди")
+        raise ClientError(tr("Некорректный путь или отпечаток файла в очереди"))
     if job["upload"] and not re.fullmatch(r"/api/v1/uploads/[A-Za-z0-9_-]{43}", job["upload"]):
-        raise ClientError("Некорректный адрес загрузки в очереди")
+        raise ClientError(tr("Некорректный адрес загрузки в очереди"))
     for field in ("file_id", "share_id"):
         if job[field]:
             require_id(job[field])
     if job.get("status") not in STATUSES or type(job.get("never")) is not bool:
-        raise ClientError("Неизвестное состояние очереди")
+        raise ClientError(tr("Неизвестное состояние очереди"))
     if job.get("directory") is not None:
         validate_directory(job)
 
@@ -62,7 +63,7 @@ def validate_directory(job):
     if (job["upload"] or not isinstance(directory["folders"], list)
             or not isinstance(directory["files"], list)
             or len(directory["folders"]) + len(directory["files"]) > 10000):
-        raise ClientError("Некорректная структура папки в очереди")
+        raise ClientError(tr("Некорректная структура папки в очереди"))
     paths, parents, identities, total = set(), {""}, {job["id"]}, 0
 
     def path(value):
@@ -71,14 +72,14 @@ def validate_directory(job):
                        or "\\" in part or len(part.encode()) > 240 or any(unicodedata.category(char) == "Cc" for char in part)
                        for part in value.split("/")) or value.rpartition("/")[0] not in parents):
             # Parent paths are validated explicitly below without resolving local symlinks.
-            raise ClientError("Некорректный путь в структуре папки")
+            raise ClientError(tr("Некорректный путь в структуре папки"))
         paths.add(value)
 
     for folder in directory["folders"]:
         path(folder["path"])
         require_id(folder["key"])
         if folder["key"] in identities:
-            raise ClientError("Повторяющийся ключ загрузки папки")
+            raise ClientError(tr("Повторяющийся ключ загрузки папки"))
         identities.add(folder["key"])
         if folder["id"]:
             require_id(folder["id"])
@@ -91,11 +92,11 @@ def validate_directory(job):
         if (Path(child["source"]) != Path(job["source"]) / entry["path"] or child["id"] in identities
                 or type(entry["complete"]) is not bool or (entry["complete"] and
                     (not child["file_id"] or child["offset"] != child["size"]))):
-            raise ClientError("Некорректный файл в структуре папки")
+            raise ClientError(tr("Некорректный файл в структуре папки"))
         identities.add(child["id"])
         total += child["size"]
     if total != job["size"] or len(json.dumps(directory, ensure_ascii=False).encode()) > 16 << 20:
-        raise ClientError("Некорректный размер структуры папки")
+        raise ClientError(tr("Некорректный размер структуры папки"))
 
 
 def persisted_job(job):
@@ -120,6 +121,7 @@ class StateStore:
             if raw["version"] != 1 or not isinstance(raw["settings"], dict) or not isinstance(raw["jobs"], list) or len(raw["jobs"]) > 100:
                 raise ValueError()
             settings = {key: raw["settings"].get(key, value) for key, value in DEFAULTS.items()}
+            settings["language"] = normalize(settings["language"])
             for key, default in DEFAULTS.items():
                 if type(settings[key]) is not type(default):
                     raise ValueError()
@@ -142,7 +144,7 @@ class StateStore:
                 raise ValueError()
             return {"version": 1, "settings": settings, "jobs": jobs}
         except (KeyError, ValueError, TypeError, ClientError):
-            raise ClientError("Не удалось прочитать очередь. Сохраните state.json перед восстановлением") from None
+            raise ClientError(tr("Не удалось прочитать очередь. Сохраните state.json перед восстановлением")) from None
 
     def save(self, state):
         # Explicit allowlist: public capabilities, tokens and passwords never reach disk.
@@ -150,7 +152,7 @@ class StateStore:
                   "jobs": [persisted_job(job) for job in state["jobs"]]}
         payload = json.dumps(output, ensure_ascii=True)
         if len(payload.encode()) > 64 << 20:
-            raise ClientError("Очередь слишком большая. Удалите завершённые записи")
+            raise ClientError(tr("Очередь слишком большая. Удалите завершённые записи"))
         directory = self.path.parent
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(directory, 0o700)

@@ -19,7 +19,7 @@ public sealed partial class UploadEngine
         source = Path.TrimEndingDirectorySeparator(Path.GetFullPath(source));
         if (System.IO.Directory.Exists(source)) return await PrepareDirectoryAsync(source, folder, ct).ConfigureAwait(false);
         if (!File.Exists(source) || (File.GetAttributes(source) & FileAttributes.Directory) != 0)
-            throw new ClientException("Можно загружать только обычные файлы");
+            throw new ClientException(Localization.Text("Можно загружать только обычные файлы"));
         await using var file = Open(source);
         var ticks = File.GetLastWriteTimeUtc(source).Ticks;
         var size = file.Length;
@@ -56,20 +56,20 @@ public sealed partial class UploadEngine
             job.Offset > job.Size || !Path.IsPathFullyQualified(job.Source) || job.Name != Path.GetFileName(job.Source) ||
             job.Fingerprint.Length != 64 || !job.Fingerprint.All(Uri.IsHexDigit) ||
             (job.Upload.Length != 0 && (!Protocol.IsIdentifier(job.FileId) || Protocol.UploadPath(job.Upload) != job.Upload)))
-            throw new ClientException("Некорректное состояние загрузки");
+            throw new ClientException(Localization.Text("Некорректное состояние загрузки"));
         if (job.Directory is not null) ValidateDirectory(job);
     }
 
     private static void CheckSource(FileStream file, UploadJob job)
     {
         if (file.Length != job.Size || File.GetLastWriteTimeUtc(job.Source).Ticks != job.ModifiedTicks)
-            throw new ClientException("Исходный файл изменился. Отмените загрузку и добавьте файл заново");
+            throw new ClientException(Localization.Text("Исходный файл изменился. Отмените загрузку и добавьте файл заново"));
     }
 
     private static bool Retryable(Exception error) => error switch
     {
         ApiException api => api.Status == 429 || api.Status >= 500 && api.Status != 507,
-        ClientException client => client.Message.StartsWith("Не удалось", StringComparison.Ordinal),
+        ClientException client => client.Retryable,
         HttpRequestException => true,
         OperationCanceledException => true, // A request timeout is retryable; caller cancellation is checked separately.
         _ => false
@@ -108,9 +108,9 @@ public sealed partial class UploadEngine
         await using var file = directoryRoot is null ? Open(job.Source) : OpenDirectoryFile(directoryRoot, job.Source);
         CheckSource(file, job);
         if (await FingerprintAsync(file, job.Size, job.ModifiedTicks, ct).ConfigureAwait(false) != job.Fingerprint)
-            throw new ClientException("Исходный файл изменился. Отмените загрузку и добавьте файл заново");
+            throw new ClientException(Localization.Text("Исходный файл изменился. Отмените загрузку и добавьте файл заново"));
         var folder = await api.NodeAsync(job.Folder, ct).ConfigureAwait(false);
-        if (folder.Kind != "folder" || folder.Role < 3) throw new ClientException("Для загрузки и ссылки нужны права управляющего");
+        if (folder.Kind != "folder" || folder.Role < 3) throw new ClientException(Localization.Text("Для загрузки и ссылки нужны права управляющего"));
         if (job.Upload.Length == 0)
         {
             job = await RetryAsync(() => api.CreateUploadAsync(job, ct), ct).ConfigureAwait(false);
@@ -124,26 +124,26 @@ public sealed partial class UploadEngine
             ct.ThrowIfCancellationRequested();
             var head = await RetryAsync(() => api.HeadAsync(job.Upload, ct), ct).ConfigureAwait(false);
             if (head.Length != job.Size || head.FileId != job.FileId || head.Offset < 0 || head.Offset > job.Size || head.ChunkSize < 1)
-                throw new ClientException("Состояние загрузки не соответствует исходному файлу");
+                throw new ClientException(Localization.Text("Состояние загрузки не соответствует исходному файлу"));
             var previous = job.Offset;
             job = job with { Offset = head.Offset, Transferred = job.Transferred + (reconciled ? Math.Max(0, head.Offset - previous) : 0) };
             reconciled = true;
             await checkpoint(job, ct).ConfigureAwait(false);
             if (head.State == "complete")
             {
-                if (head.Offset != job.Size) throw new ClientException("Сервер не подтвердил завершение файла");
+                if (head.Offset != job.Size) throw new ClientException(Localization.Text("Сервер не подтвердил завершение файла"));
                 CheckSource(file, job);
                 return job;
             }
             if (head.State == "committing")
             {
-                if (++stalled > 60) throw new ClientException("Сервер пока не завершил файл. Продолжите позже");
+                if (++stalled > 60) throw new ClientException(Localization.Text("Сервер пока не завершил файл. Продолжите позже"));
                 await _delay(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false);
                 continue;
             }
-            if (head.State != "open") throw new ClientException("Некорректное состояние загрузки");
+            if (head.State != "open") throw new ClientException(Localization.Text("Некорректное состояние загрузки"));
             // Bound even a broken server that returns success without advancing its durable offset.
-            if (head.Offset == previous && ++stalled > 8) throw new ClientException("Сервер не подтверждает передачу. Продолжите позже");
+            if (head.Offset == previous && ++stalled > 8) throw new ClientException(Localization.Text("Сервер не подтверждает передачу. Продолжите позже"));
             if (head.Offset != previous) stalled = 0;
             CheckSource(file, job);
             file.Position = head.Offset;

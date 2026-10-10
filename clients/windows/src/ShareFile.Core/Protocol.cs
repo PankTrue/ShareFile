@@ -13,19 +13,19 @@ public static partial class Protocol
     private static partial Regex SharePattern();
 
     public static bool IsIdentifier(string? value) => value is not null && IdentifierPattern().IsMatch(value);
-    public static string RequireIdentifier(string id) => IsIdentifier(id) ? id : throw new ClientException("Некорректный идентификатор");
+    public static string RequireIdentifier(string id) => IsIdentifier(id) ? id : throw new ClientException(Localization.Text("Некорректный идентификатор"));
 
     public static string NormalizeOrigin(string input)
     {
         if (!Uri.TryCreate(input.Trim(), UriKind.Absolute, out var uri) ||
             uri.Host.Length == 0 || uri.UserInfo.Length != 0 || uri.AbsolutePath != "/" ||
             uri.Query.Length != 0 || uri.Fragment.Length != 0)
-            throw new ClientException("Введите адрес сервера без пути, логина и параметров");
+            throw new ClientException(Localization.Text("Введите адрес сервера без пути, логина и параметров"));
         var host = uri.IdnHost.Trim('[', ']');
         var loopback = host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
             (IPAddress.TryParse(host, out var ip) && IPAddress.IsLoopback(ip));
         if (uri.Scheme != "https" && !(uri.Scheme == "http" && loopback))
-            throw new ClientException("Нужен HTTPS; HTTP разрешён только для локального тестирования");
+            throw new ClientException(Localization.Text("Нужен HTTPS; HTTP разрешён только для локального тестирования"));
         return uri.GetLeftPart(UriPartial.Authority);
     }
 
@@ -36,7 +36,7 @@ public static partial class Protocol
         if (Uri.TryCreate(location, UriKind.Absolute, out var uri) &&
             uri.UserInfo.Length == 0 && uri.Query.Length == 0 && uri.Fragment.Length == 0 &&
             UploadPattern().IsMatch(uri.AbsolutePath) && !location.Contains('%')) return uri.AbsolutePath;
-        throw new ClientException("Сервер вернул некорректный адрес загрузки");
+        throw new ClientException(Localization.Text("Сервер вернул некорректный адрес загрузки"));
     }
 
     public static void ValidatePairing(Pairing pairing, string origin)
@@ -46,7 +46,7 @@ public static partial class Protocol
             uri.GetLeftPart(UriPartial.Authority) != origin || uri.UserInfo.Length != 0 ||
             uri.AbsolutePath != "/device/connect" || uri.Fragment.Length != 0 ||
             uri.Query != "?request=" + pairing.Request.Id)
-            throw new ClientException("Сервер вернул некорректный адрес подключения");
+            throw new ClientException(Localization.Text("Сервер вернул некорректный адрес подключения"));
     }
 
     public static void ValidateLink(ShareLink link)
@@ -56,6 +56,6 @@ public static partial class Protocol
             NormalizeOrigin(uri.GetLeftPart(UriPartial.Authority)) != uri.GetLeftPart(UriPartial.Authority) ||
             uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0 ||
             !SharePattern().IsMatch(uri.AbsolutePath) || !IsIdentifier(link.Share.Id))
-            throw new ClientException("Сервер вернул некорректную публичную ссылку");
+            throw new ClientException(Localization.Text("Сервер вернул некорректную публичную ссылку"));
     }
 }

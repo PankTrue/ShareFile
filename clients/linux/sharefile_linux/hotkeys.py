@@ -1,3 +1,4 @@
+from .localization import tr
 """X11 Keybinder and Wayland GlobalShortcuts portal, released on exit."""
 import os
 import uuid
@@ -9,7 +10,7 @@ BUS = "org.freedesktop.portal.Desktop"
 PATH = "/org/freedesktop/portal/desktop"
 INTERFACE = "org.freedesktop.portal.GlobalShortcuts"
 SHORTCUT = "upload-clipboard"
-FALLBACK = "Горячая клавиша недоступна. Назначьте Ctrl+Alt+U для команды sharefile --clipboard в настройках рабочего окружения"
+FALLBACK = tr("Горячая клавиша недоступна. Назначьте Ctrl+Alt+U для команды sharefile --clipboard в настройках рабочего окружения")
 
 
 class GlobalShortcut:
@@ -29,7 +30,7 @@ class GlobalShortcut:
                 Keybinder.init()
                 if Keybinder.bind("<Control><Alt>u", lambda *_: self.activated(""), None):
                     self.keybinder = Keybinder
-                    self.notice("Изображение из буфера: Ctrl+Alt+U")
+                    self.notice(tr("Изображение из буфера: Ctrl+Alt+U"))
                     return
             except (ImportError, ValueError, GLib.Error):
                 pass
@@ -98,7 +99,7 @@ class GlobalShortcut:
         subscription = self.connection.signal_subscribe(BUS, INTERFACE, "Activated", PATH,
             None, Gio.DBusSignalFlags.NONE, self._activated)
         self.subscriptions.add(subscription)
-        shortcuts = [(SHORTCUT, {"description": GLib.Variant("s", "Загрузить изображение из буфера в ShareFile"),
+        shortcuts = [(SHORTCUT, {"description": GLib.Variant("s", tr("Загрузить изображение из буфера в ShareFile")),
                                 "preferred_trigger": GLib.Variant("s", "CTRL+ALT+u")})]
         self._request("BindShortcuts", "(oa(sa{sv})sa{sv})", (self.session, shortcuts, ""), {}, self._bound)
 
@@ -107,7 +108,7 @@ class GlobalShortcut:
         if bound is None:
             self.notice(FALLBACK)
         else:
-            self.notice("Изображение из буфера: " + bound.get("trigger_description", "Ctrl+Alt+U"))
+            self.notice(tr("Изображение из буфера: ") + bound.get("trigger_description", "Ctrl+Alt+U"))
 
     def _activated(self, connection, sender, path, interface, signal, parameters):
         session, identity, timestamp, options = parameters.unpack()

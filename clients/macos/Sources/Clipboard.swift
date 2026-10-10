@@ -9,17 +9,17 @@ struct ClipboardImages {
 
     func capture(_ pasteboard: NSPasteboard = .general) throws -> URL {
         guard let data = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) else {
-            throw AppFailure(message: "В буфере обмена нет изображения. Скопируйте скриншот и повторите")
+            throw AppFailure(message: L("В буфере обмена нет изображения. Скопируйте скриншот и повторите"))
         }
         guard data.count <= Self.maxBytes, let image = NSBitmapImageRep(data: data),
               image.pixelsWide > 0, image.pixelsHigh > 0,
               image.pixelsWide <= Self.maxPixels / image.pixelsHigh,
               let png = image.representation(using: .png, properties: [:]), png.count <= Self.maxBytes else {
-            throw AppFailure(message: "Изображение повреждено или слишком большое (максимум 25 Мп и 32 МиБ)")
+            throw AppFailure(message: L("Изображение повреждено или слишком большое (максимум 25 Мп и 32 МиБ)"))
         }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let values = try directory.resourceValues(forKeys: [.isSymbolicLinkKey])
-        guard values.isSymbolicLink != true else { throw AppFailure(message: "Не удалось открыть каталог изображений") }
+        guard values.isSymbolicLink != true else { throw AppFailure(message: L("Не удалось открыть каталог изображений")) }
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
         let formatter = DateFormatter(); formatter.dateFormat = "yyyyMMdd-HHmmss"
         let file = directory.appendingPathComponent("Screenshot-" + formatter.string(from: Date()) + "-" + UUID().uuidString + ".png")
@@ -57,11 +57,11 @@ struct ClipboardImages {
             MainActor.assumeIsolated { Unmanaged<ClipboardHotKey>.fromOpaque(context).takeUnretainedValue().action() }
             return noErr
         }, 1, &event, context, &handler)
-        guard installed == noErr else { throw AppFailure(message: "Не удалось включить горячую клавишу") }
+        guard installed == noErr else { throw AppFailure(message: L("Не удалось включить горячую клавишу")) }
         let status = RegisterEventHotKey(UInt32(kVK_ANSI_U), UInt32(cmdKey | shiftKey), EventHotKeyID(signature: 0x5346434C, id: 1), GetApplicationEventTarget(), 0, &hotKey)
         guard status == noErr else {
             stop()
-            throw AppFailure(message: "⌘⇧U занято другим приложением. Используйте «Из буфера обмена» в меню ShareFile")
+            throw AppFailure(message: L("⌘⇧U занято другим приложением. Используйте «Из буфера обмена» в меню ShareFile"))
         }
     }
     func stop() {

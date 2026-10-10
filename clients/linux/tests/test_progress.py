@@ -36,12 +36,12 @@ class ProgressTests(unittest.TestCase):
                 dict(id="large", batch="new", size=900, offset=400, status="uploading", rate=100)]
         result = summary(selection_jobs(jobs))
         self.assertEqual((result["percent"], result["size"], result["completed"]), (50, 1000, 1))
-        self.assertIn("Осталось ≈ 5 с", result["detail"])
+        self.assertIn("Remaining ≈ 5 s", result["detail"])
         jobs[2]["status"] = "paused"
-        self.assertNotIn("Осталось ≈", summary(selection_jobs(jobs))["detail"])
+        self.assertNotIn("Remaining ≈", summary(selection_jobs(jobs))["detail"])
 
     def test_empty_file_waits_for_finalization(self):
-        self.assertEqual(remaining_time(7199), "2 ч")
+        self.assertEqual(remaining_time(7199), "2 h")
         job = dict(id="empty", size=0, offset=0, status="sharing")
         self.assertEqual(summary([job])["percent"], 0)
         job["status"] = "done"

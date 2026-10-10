@@ -100,7 +100,7 @@ final class TestHistorySecrets: @unchecked Sendable {
     let delegate = AppDelegate(); delegate.model = menuModel
     let menu = NSMenu()
     delegate.menuNeedsUpdate(menu)
-    guard let submenu = menu.items.first?.submenu, submenu.items.map(\.title).suffix(3) == ["Копировать ссылку", "Открыть ссылку", "Отозвать ссылку"],
+    guard let submenu = menu.items.first?.submenu, submenu.items.map(\.title).suffix(3) == ["Copy link", "Open link", "Revoke link"],
           submenu.items[1].isEnabled, submenu.items[2].isEnabled, !submenu.items[3].isEnabled else { throw AppFailure(message: "Recent-link menu did not expose offline copy/open or disabled revoke") }
     menuModel.token = "disposable-menu-test-token"
     delegate.menuNeedsUpdate(menu)
@@ -169,7 +169,7 @@ func integrationSmokeTest() -> Never {
                     failedClipboard.add([URL(fileURLWithPath: files.last!)])
                     let clipboardDeadline = Date().addingTimeInterval(15)
                     while failedCompletion == nil && Date() < clipboardDeadline { try await Task.sleep(nanoseconds: 100_000_000) }
-                    guard failedCompletion?.copied == false, failedClipboard.settings.uploads.last?.status == "done", failedCompletion?.body.contains("Не удалось скопировать") == true else { throw AppFailure(message: "Clipboard failure must not claim that the link was copied") }
+                    guard failedCompletion?.copied == false, failedClipboard.settings.uploads.last?.status == "done", failedCompletion?.body.contains("Could not copy") == true else { throw AppFailure(message: "Clipboard failure must not claim that the link was copied") }
                     model.add([directory.appendingPathComponent("missing-test-source.txt")])
                     let rejectionDeadline = Date().addingTimeInterval(5)
                     while model.fileErrors.isEmpty && Date() < rejectionDeadline { try await Task.sleep(nanoseconds: 100_000_000) }
