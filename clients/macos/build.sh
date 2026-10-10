@@ -4,8 +4,13 @@ MAC_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$MAC_DIR/../.." && pwd)"
 BUILD_DIR="$MAC_DIR/build"
 GO_BIN="${GO:-go}"
+PYTHON_BIN="${PYTHON:-python3}"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 mkdir -p "$BUILD_DIR"
+DMG_PYTHON="$BUILD_DIR/dmg-tools/bin/python"
+if [ ! -x "$DMG_PYTHON" ]; then "$PYTHON_BIN" -m venv "$BUILD_DIR/dmg-tools"; fi
+PIP_CACHE_DIR="$BUILD_DIR/pip-cache" "$DMG_PYTHON" -m pip install \
+    --disable-pip-version-check --quiet --only-binary=:all: -r "$MAC_DIR/requirements-dmg.txt"
 STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sharefile-macos-build.XXXXXX")"
 trap 'rm -rf "$STAGE_DIR"' EXIT
 APP_DIR="$STAGE_DIR/ShareFile.app"
@@ -34,17 +39,11 @@ codesign --force --sign "$SIGN_IDENTITY" --options runtime "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"
 if [ -e "$BUILD_DIR/ShareFile.app" ]; then rm -rf "$BUILD_DIR/ShareFile.app"; fi
 ditto --norsrc --noextattr "$APP_DIR" "$BUILD_DIR/ShareFile.app"
-cp "$MAC_DIR/Install.command" "$BUILD_DIR/Install.command"
-cp "$MAC_DIR/Uninstall.command" "$BUILD_DIR/Uninstall.command"
-chmod +x "$BUILD_DIR/Install.command" "$BUILD_DIR/Uninstall.command"
-mkdir -p "$STAGE_DIR/package"
-ditto --norsrc --noextattr "$APP_DIR" "$STAGE_DIR/package/ShareFile.app"
-cp "$BUILD_DIR/Install.command" "$BUILD_DIR/Uninstall.command" "$STAGE_DIR/package/"
-cp "$ROOT_DIR/docs/macos.md" "$STAGE_DIR/package/README.md"
-ln -s /Applications "$STAGE_DIR/package/Applications"
+xcrun swift -module-cache-path "$BUILD_DIR/module-cache" \
+    "$MAC_DIR/Resources/dmg-background.swift" "$STAGE_DIR/artwork"
 PACKAGE_NAME="ShareFile-macOS-universal.dmg"
-hdiutil create -volname ShareFile -srcfolder "$STAGE_DIR/package" -fs HFS+ \
-    -format UDZO "$STAGE_DIR/$PACKAGE_NAME"
+"$DMG_PYTHON" "$MAC_DIR/package-dmg.py" "$APP_DIR" \
+    "$STAGE_DIR/artwork/dmg-background.png" "$STAGE_DIR/$PACKAGE_NAME"
 hdiutil verify "$STAGE_DIR/$PACKAGE_NAME"
 mv "$STAGE_DIR/$PACKAGE_NAME" "$BUILD_DIR/$PACKAGE_NAME"
 (cd "$BUILD_DIR" && shasum -a 256 "$PACKAGE_NAME" > "$PACKAGE_NAME.sha256")

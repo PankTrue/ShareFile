@@ -40,7 +40,7 @@ desktop-check:
 	cd clients/core && $(GO) test -race ./...
 
 macos-build:
-	GO='$(GO)' bash clients/macos/build.sh
+	GO='$(GO)' PYTHON='$(PYTHON)' bash clients/macos/build.sh
 
 macos-check:
 	codesign --verify --deep --strict clients/macos/build/ShareFile.app
