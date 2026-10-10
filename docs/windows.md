@@ -90,7 +90,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 Get-FileHash .\build\ShareFile-Windows-win-x64.zip -Algorithm SHA256
 ```
 
-Workflow **Windows client** проверяет C#-ядро с настоящим Go backend на Linux: сервер использует Unix API и не собирается для Windows. Затем Windows job компилирует решение, проверяет Credential Manager, передачу нескольких Unicode-путей между экземплярами, создание/показ/скрытие WPF-окна и portable-тесты ядра; после этого публикует Actions artifact **ShareFile-Windows** с обеими архитектурами. Workflow не публикует GitHub Release автоматически.
+Единый workflow [**Build and release**](../.github/workflows/build.yml) запускает сборки всех платформ параллельно. Job **Windows protocol with Linux backend** проверяет C#-ядро с настоящим Go backend на Linux: сервер использует Unix API и не собирается для Windows. Независимый job **Windows (x64 and ARM64)** компилирует решение, проверяет Credential Manager, передачу нескольких Unicode-путей между экземплярами, создание/показ/скрытие WPF-окна и portable-тесты ядра; после этого публикует Actions artifact **ShareFile-Windows** с обеими архитектурами. По push тега `v*` пакеты включаются в общий GitHub Release после успешного завершения всех проверок и сборок.
 
 Локально на macOS подтверждены: сборка всех четырёх проектов без предупреждений, автономная компиляция Windows x64/ARM64 и 30 тестов C#-ядра, включая настоящий backend, рестарт/возобновление, ссылки с паролем и отзыв, пустые/Unicode-файлы, sparse-источник больше 5 GiB, отсутствие секретов в JSON, одно уведомление об ошибках группы и запрет перенаправления токена. Sparse-тест проверяет offsets больше 4 GiB, а не полную передачу большого файла.
 

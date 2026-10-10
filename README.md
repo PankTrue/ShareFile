@@ -159,7 +159,7 @@ The following features are implemented in the current backend, Web UI and deskto
 - **Entware service:** automatic startup, supervised process restart, graceful shutdown, bounded JSON logs, `/healthz` process liveness and `/readyz` storage/database readiness.
 - **Router packages:** a static Linux ARM64 backend, compiled Web UI, configuration templates, installer/updater, supervisor and LAN TLS tools. Installation verifies SHA-256; updates preserve configuration, certificates, accounts and data and restore previous application files if startup fails.
 - **LAN HTTPS:** installation creates a local CA and server certificate for direct LAN/VPN access. The TLS helper renews a near-expiry server certificate when rerun; renewal is not scheduled automatically.
-- **Independent desktop packages:** universal macOS, Windows x64/ARM64 and Linux x86_64/ARM64 builds, per-user installation, platform integrations and separate build/check workflows. Native platform and external KeenDNS acceptance checks remain separately documented.
+- **Independent desktop packages:** universal macOS, Windows x64/ARM64 and Linux x86_64/ARM64 builds, per-user installation, platform integrations and parallel build/check jobs in one workflow. Native platform and external KeenDNS acceptance checks remain separately documented.
 
 ## Install on the router from GitHub
 
@@ -279,9 +279,9 @@ Logs: `/opt/var/log/sharefile/server.jsonl`, with one rotated file, each limited
 
 ## Publish a GitHub release
 
-The [router workflow](.github/workflows/router-release.yml) runs on pushes to `master`/`main`, pull requests, and manual dispatch. It builds the Linux ARM64 executable and React assets, checks the backend and Web UI, exercises the installer, and uploads an Actions artifact named `sharefile-router`.
+The single [Build and release workflow](.github/workflows/build.yml) runs on pushes to `master`/`main`, pull requests, and manual dispatch. Four independent jobs build and check the router with Web UI, macOS universal, Windows x64/ARM64, and Linux x86_64/ARM64 in parallel. An additional parallel Linux job checks the Windows protocol against a real Go backend. Each platform job runs its own build, validation and packaging steps and uploads a separate Actions artifact: `sharefile-router`, `ShareFile-macOS`, `ShareFile-Windows`, or `ShareFile-Linux`.
 
-A pushed `v*` tag also publishes a GitHub Release with three downloadable assets:
+A pushed `v*` tag publishes a GitHub Release after all five jobs succeed. It includes these router assets plus the macOS ZIP, both Windows ZIPs, both Linux tarballs and their SHA-256 files:
 
 - `sharefile-router.tar.gz`: server, Web UI, configuration templates, and Entware scripts.
 - `sharefile-router.tar.gz.sha256`: archive checksum.
@@ -294,7 +294,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-Wait for **Actions → Router build and release** to finish, then check the repository's **Releases** page. Tags containing a hyphen, such as `v0.2.0-rc.1`, are published as prereleases and are available through `--version`; the default installer selects the latest stable release.
+Wait for **Actions → Build and release** to finish, then check the repository's **Releases** page. Tags containing a hyphen, such as `v0.2.0-rc.1`, are published as prereleases and are available through `--version`; the default installer selects the latest stable release.
 
 Publishing uses the repository's `GITHUB_TOKEN` with `contents: write` only in the release job. No personal access token is needed for the workflow. GitHub release downloads in the installation command assume the repository/releases are public. See the [GitHub CLI release documentation](https://cli.github.com/manual/gh_release_create).
 
@@ -395,7 +395,7 @@ make linux-smoke
 
 The C#/.NET 10 client uses WPF, CommunityToolkit.Mvvm, and Microsoft dependency injection. It provides browser-assisted pairing, Windows Credential Manager storage, a durable resumable queue, file/folder drag-and-drop and selection, a tray icon, and an Explorer **Send to** shortcut. A directory preserves empty subfolders and produces one folder link. Explorer selections upload in the background, copy all resulting links together, and produce one completion notification. Public URLs and credentials are excluded from queue checkpoints.
 
-Self-contained x64 and ARM64 packages include the runtime. Extract the entire ZIP and run `Install.cmd`; installation is per-user and does not need administrator rights. Windows packages are currently unsigned. On Windows, build with `clients/windows/build.ps1`; the **Windows client** workflow produces the **ShareFile-Windows** Actions artifact.
+Self-contained x64 and ARM64 packages include the runtime. Extract the entire ZIP and run `Install.cmd`; installation is per-user and does not need administrator rights. Windows packages are currently unsigned. On Windows, build with `clients/windows/build.ps1`; the **Windows (x64 and ARM64)** job in **Build and release** produces the **ShareFile-Windows** Actions artifact.
 
 ```sh
 make windows-compile
