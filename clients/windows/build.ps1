@@ -17,7 +17,10 @@ try {
         $packagesRoot = ($packagesLine -replace '^global-packages:\s*', '').Trim()
         $frameworks = (Get-Content "$output/ShareFile.runtimeconfig.json" -Raw | ConvertFrom-Json).runtimeOptions.includedFrameworks
         [xml]$project = Get-Content src/ShareFile.Windows/ShareFile.Windows.csproj -Raw
-        $mvvmVersion = ($project.Project.ItemGroup.PackageReference | Where-Object { $_.Include -eq 'CommunityToolkit.Mvvm' }).Version
+        $mvvmReference = $project.SelectSingleNode('/Project/ItemGroup/PackageReference[@Include="CommunityToolkit.Mvvm"]')
+        if ($null -eq $mvvmReference) { throw 'Cannot find CommunityToolkit.Mvvm PackageReference' }
+        $mvvmVersion = $mvvmReference.GetAttribute('Version')
+        if ([string]::IsNullOrWhiteSpace($mvvmVersion)) { throw 'CommunityToolkit.Mvvm PackageReference has no version' }
         $licenses = Join-Path $output 'licenses'
         New-Item -ItemType Directory -Path $licenses | Out-Null
         $dependencies = @(
