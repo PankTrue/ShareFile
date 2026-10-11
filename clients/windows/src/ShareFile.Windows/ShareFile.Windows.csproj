@@ -10,6 +10,7 @@
     <ApplicationIcon>Assets/ShareFile.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="ShareFile.Windows.Tests" />
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
     <Using Include="System.IO" />

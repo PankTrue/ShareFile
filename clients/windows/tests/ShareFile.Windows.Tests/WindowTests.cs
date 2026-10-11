@@ -8,15 +8,6 @@ namespace ShareFile.Windows.Tests;
 [Collection("Windows integration")]
 public sealed class WindowTests
 {
-    private sealed class ResourceTestApplication : App
-    {
-        public bool StartupProcessed { get; private set; }
-
-        // Application queues OnStartup in its constructor. Load the real XAML
-        // resources without launching the client with the test runner's arguments.
-        protected override void OnStartup(StartupEventArgs e) => StartupProcessed = true;
-    }
-
     private static async Task RunOnStaAsync(Action action)
     {
         var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -61,21 +52,24 @@ public sealed class WindowTests
     [Fact]
     public Task WindowLoadsXamlResourcesAndStaysHiddenUntilRequested() => RunOnStaAsync(() =>
     {
-        var app = new ResourceTestApplication(); app.InitializeComponent();
+        var app = new App(startClient: false);
+        var startupProcessed = false;
+        app.Startup += (_, _) => startupProcessed = true;
+        app.InitializeComponent();
         Task? scenario = null;
-        _ = app.Dispatcher.InvokeAsync(() => { scenario = CheckWindowAsync(app); });
+        _ = app.Dispatcher.InvokeAsync(() => { scenario = CheckWindowAsync(app, startupProcessed); });
         app.Run();
         Assert.True(app.Dispatcher.HasShutdownFinished);
         Assert.NotNull(scenario);
         scenario.GetAwaiter().GetResult();
     });
 
-    private static async Task CheckWindowAsync(ResourceTestApplication app)
+    private static async Task CheckWindowAsync(App app, bool startupProcessed)
     {
         var directory = Path.Combine(Path.GetTempPath(), "sharefile-window-test-" + Guid.NewGuid().ToString("N"));
         try
         {
-            Assert.True(app.StartupProcessed);
+            Assert.True(startupProcessed);
             Assert.Equal(ShutdownMode.OnExplicitShutdown, app.ShutdownMode);
             Assert.IsType<Style>(app.Resources[typeof(System.Windows.Controls.Button)]);
             await using var queue = new UploadQueue(new JsonStateStore(Path.Combine(directory, "state.json")), new UploadEngine());

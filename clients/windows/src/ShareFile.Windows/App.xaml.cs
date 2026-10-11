@@ -8,15 +8,23 @@ namespace ShareFile.Windows;
 
 public partial class App : Application
 {
+    private readonly bool _startClient;
     private SingleInstance? _instance;
     private ServiceProvider? _services;
     private MainViewModel? _model;
     private bool _exiting;
     private ClipboardHotKey? _clipboardHotKey;
 
+    public App() : this(startClient: true) { }
+
+    // Resource tests need this exact type: WPF requires the component and its
+    // compiled XAML to belong to the same assembly.
+    internal App(bool startClient) => _startClient = startClient;
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (!_startClient) return;
         try
         {
             var request = LaunchRequest.Parse(e.Args);
