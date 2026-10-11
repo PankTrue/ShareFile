@@ -1,4 +1,5 @@
 """Run in Linux with dbus-run-session -- xvfb-run -a python3 -m unittest ..."""
+import gc
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,7 @@ import tempfile
 import time
 import unittest
 import uuid
+import weakref
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -92,11 +94,21 @@ class GtkTests(unittest.TestCase):
         self.app.days.set_value(90)
         self.app.history_search.set_text("Отчёт 日本語")
         self.app.shortcut_notice("Clipboard image: Ctrl+Alt+P")
+        gc.collect()
         self.app.language_picker.set_active_id("ru")
         self.spin()
         self.assertIs(self.app.window, window)
         self.assertEqual(self.app.add_button.get_label(), "Загрузить и поделиться…")
-        self.assertEqual(self.app.tree.get_column(0).get_title(), "Файл или папка")
+        self.assertEqual([column.get_title() for column in self.app.tree.get_columns()],
+                         ["Файл или папка", "Размер", "Прогресс", "Состояние", "Скорость / осталось"])
+        self.assertEqual([column.get_title() for column in self.app.history_tree.get_columns()],
+                         ["Файл или папка", "Создана", "Состояние"])
+        self.assertEqual([self.app.notebook.get_tab_label(self.app.notebook.get_nth_page(index)).get_text()
+                          for index in range(3)], ["Загрузки", "Настройки", "История ссылок"])
+        self.assertEqual(self.app.language_picker.get_parent().get_children()[0].get_text(), "Язык приложения")
+        self.assertEqual([item.get_label() for item in self.app.tray_menu.get_children()],
+                         ["Недавние ссылки", "Открыть ShareFile", "Из буфера обмена (Ctrl+Alt+U)",
+                          "История ссылок", "Приостановить всё", "Завершить"])
         self.assertEqual(self.app.controller.store.load()["settings"]["language"], "ru")
         self.assertEqual(self.app.origin.get_text(), "https://unsaved.example")
         self.assertEqual(self.app.password_entry.get_text(), "unsaved-password")
@@ -106,11 +118,31 @@ class GtkTests(unittest.TestCase):
         self.app.language_picker.set_active_id("en")
         self.spin()
         self.assertEqual(self.app.add_button.get_label(), "Upload and share…")
-        self.assertEqual(self.app.tree.get_column(0).get_title(), "File or folder")
+        self.assertEqual([column.get_title() for column in self.app.tree.get_columns()],
+                         ["File or folder", "Size", "Progress", "Status", "Speed / remaining"])
+        self.assertEqual([column.get_title() for column in self.app.history_tree.get_columns()],
+                         ["File or folder", "Created", "Status"])
+        self.assertEqual([self.app.notebook.get_tab_label(self.app.notebook.get_nth_page(index)).get_text()
+                          for index in range(3)], ["Uploads", "Settings", "Link history"])
+        self.assertEqual(self.app.language_picker.get_parent().get_children()[0].get_text(), "App language")
+        self.assertEqual([item.get_label() for item in self.app.tray_menu.get_children()],
+                         ["Recent links", "Open ShareFile", "From clipboard (Ctrl+Alt+U)",
+                          "Link history", "Pause all", "Quit"])
         self.app.shortcut_notice("Clipboard image: Ctrl+Alt+U")
         self.app.history_search.set_text("")
         self.app._settings_identity = None
         self.app.refresh(self.app.controller.snapshot())
+
+    def test_destroyed_localized_dialog_controls_are_released(self):
+        dialog = Gtk.Dialog(transient_for=self.app.window)
+        button = self.app.button("Назад", lambda: None, dialog.get_content_area())
+        self.app.localized_tooltip(button, "Открыть папку")
+        reference = weakref.ref(button)
+        dialog.destroy()
+        del button, dialog
+        self.spin()
+        gc.collect()
+        self.assertIsNone(reference())
 
     def hide_notebook_pages(self):
         # Restore the startup visibility state even if another test showed the window.

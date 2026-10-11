@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 import sys
 import time
-import weakref
 from datetime import datetime
 
 import gi
@@ -60,7 +59,9 @@ class Application(Gtk.Application):
         self.controller = None
         self.window = None
         self._snapshot = {}
-        self._translations = weakref.WeakKeyDictionary()
+        # GTK can retain native objects after their Python wrappers are collected.
+        # Keep the wrappers and their translation metadata together.
+        self._translations = {}
         self._shortcut_text = ""
         self._settings_identity = None
         self._quitting = False
@@ -143,16 +144,24 @@ class Application(Gtk.Application):
     def localized(self, factory, *args, **kwargs):
         widget = factory(*args, **kwargs)
         if "label" in kwargs:
-            self._translations.setdefault(widget, {})["set_label"] = kwargs["label"]
+            self._remember_translation(widget, "set_label", kwargs["label"])
         elif "placeholder_text" in kwargs:
-            self._translations.setdefault(widget, {})["set_placeholder_text"] = kwargs["placeholder_text"]
+            self._remember_translation(widget, "set_placeholder_text", kwargs["placeholder_text"])
         elif args and isinstance(widget, Gtk.TreeViewColumn):
-            self._translations.setdefault(widget, {})["set_title"] = args[0]
+            self._remember_translation(widget, "set_title", args[0])
         return widget
+
+    def _remember_translation(self, widget, setter, source):
+        if widget not in self._translations and isinstance(widget, Gtk.Widget):
+            widget.connect("destroy", self._forget_translations)
+        self._translations.setdefault(widget, {})[setter] = source
+
+    def _forget_translations(self, widget):
+        self._translations.pop(widget, None)
 
     def localized_tooltip(self, widget, text):
         widget.set_tooltip_text(text)
-        self._translations.setdefault(widget, {})["set_tooltip_text"] = text
+        self._remember_translation(widget, "set_tooltip_text", text)
 
     def shortcut_notice(self, text):
         self._shortcut_text = text
